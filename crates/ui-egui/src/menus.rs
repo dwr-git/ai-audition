@@ -1,0 +1,1136 @@
+//! The menu bar, built from the incumbent's menu catalog so every item has its place. Items
+//! that map to a command are live; the rest are shown disabled (and listed in the parity report).
+//! A few features we do not have yet keep their catalog place as placeholders
+//! ([`catalog::PLACEHOLDERS`]): they are never interactive and say so on hover, as the Preferences
+//! placeholders do.
+
+use crate::{MainWindow, SoundApp};
+use serde_json::{Value, json};
+use soundcraft_engine::catalog;
+
+/// UI-layer commands: (id, label, catalog path or "", shortcut).
+pub const UI_COMMANDS: &[(&str, &str, &str, Option<&str>)] = &[
+    ("app.checkForUpdates", "Check for Updates…", "", None),
+    ("ui.dock", "Arrange Panel", "", None),
+    ("ui.dock.reset", "Reset Panel Layout", "Window > Reset Panel Layout", None),
+    ("window.mix", "Mix", "Window > Mix", Some("Cmd+=")),
+    ("window.edit", "Edit", "Window > Edit", Some("Cmd+=")),
+    ("window.toggle_mix_edit", "Toggle Mix/Edit", "", Some("Cmd+=")),
+    ("window.mix_separate", "Mix in Separate Window", "", None),
+    ("window.transport", "Transport", "Window > Transport", Some("Cmd+1")),
+    ("window.big_counter", "Big Counter", "Window > Big Counter", Some("Cmd+3")),
+    ("window.memory_locations", "Memory Locations", "Window > Memory Locations", Some("Cmd+5")),
+    ("window.undo_history", "Undo History", "Window > Undo History", None),
+    ("window.clip_list", "Clip List", "Window > Clip List", None),
+    ("window.track_list", "Track List", "View > Other Displays > Track List", None),
+    ("window.clip_list_view", "Clip List", "View > Other Displays > Clip List", None),
+    ("window.narrow_mix", "Narrow Mix", "View > Narrow Mix", Some("Cmd+Alt+M")),
+    ("window.session_info", "Session Info", "", None),
+    ("window.audio_health", "Session Audio Health", "", None),
+    ("window.about", "About SoundCraft", "", None),
+    ("window.close", "Close Window", "Window > Close Window", Some("Cmd+W")),
+    ("window.hide_floating", "Hide All Floating Windows", "Window > Hide All Floating Windows", Some("Cmd+Ctrl+W")),
+    ("window.midi_editor", "MIDI Editor", "Window > MIDI Editor", None),
+    ("window.universe", "Universe", "View > Other Displays > Universe", Some("Alt+7")),
+    ("window.video", "Video", "Window > Video", Some("Cmd+9")),
+    ("window.video_universe", "Video Universe", "Window > Video Universe", None),
+    ("window.automation", "Automation", "Window > Automation", Some("Cmd+4")),
+    ("window.color_palette", "Color Palette", "Window > Color Palette", None),
+    ("window.disk_usage", "Disk Usage", "Window > Disk Usage", None),
+    ("window.system_usage", "System Usage", "Window > System Usage", None),
+    ("window.task_manager", "Task Manager", "Window > Task Manager", Some("Alt+'")),
+    ("window.metadata", "Metadata Inspector", "Window > Metadata Inspector", None),
+    ("window.event_list", "MIDI Event List", "Window > MIDI Event List", Some("Alt+=")),
+    ("window.midi_keyboard", "MIDI Keyboard", "Window > MIDI Keyboard", Some("Shift+K")),
+    ("window.workspace", "Workspace", "Window > New Workspace > Default", Some("Alt+I")),
+    ("window.workspace_presets", "Workspace", "Window > New Workspace > Track Presets", None),
+    ("window.workspace_sounds", "Workspace", "Window > New Workspace > Soundbase", None),
+    ("window.workspace_front", "Workspaces to Front", "Window > Workspaces > Bring to Front", Some("Alt+J")),
+    ("window.workspace_close", "Close All Workspaces", "Window > Workspaces > Close All Workspaces", None),
+    ("window.configurations", "Window Configuration List", "Window > Configurations > Window Configuration List", Some("Cmd+Alt+J")),
+    ("window.config_new", "New Configuration", "Window > Configurations > New Configuration...", None),
+    ("window.config_update", "Update Active Configuration", "Window > Configurations > Update Active Configuration", None),
+    ("window.config_auto_update", "Auto-Update Active Configuration", "Window > Configurations > Auto-Update Active Configuration", None),
+    ("window.renderer", "Renderer", "Window > Renderer", None),
+    ("window.ui_customization", "UI Customization", "Window > UI Customization", None),
+    ("window.arrange_tile", "Tile", "Window > Arrange > Tile", None),
+    ("window.arrange_tile_h", "Tile Horizontal", "Window > Arrange > Tile Horizontal", None),
+    ("window.arrange_tile_v", "Tile Vertical", "Window > Arrange > Tile Vertical", None),
+    ("window.arrange_cascade", "Cascade", "Window > Arrange > Cascade", None),
+    ("window.midi_front", "MIDI Editors to Front", "Window > MIDI Editors > Bring to Front", None),
+    ("window.midi_back", "MIDI Editors to Back", "Window > MIDI Editors > Send to Back", None),
+    ("window.clip_effects", "Clip Effects", "Window > Clip Effects", None),
+    ("window.clip_effects_dock", "Clip Effects", "View > Other Displays > Lower Dock > Clip Effects", Some("Alt+6")),
+    ("window.search", "Search", "Window > Pro Tools Search", Some("Cmd+Ctrl+S")),
+    ("window.score", "Score Editor", "Window > Score Editor", Some("Cmd+Ctrl+=")),
+    ("window.beat_detective", "Beat Analysis", "", None),
+    ("window.tempo_ops", "Tempo Operations", "", None),
+    ("window.time_ops", "Time Operations", "", None),
+    ("window.midi_ops", "MIDI Operations", "", None),
+    ("window.rtp", "MIDI Real-Time Properties", "", None),
+    ("window.playback_engine", "Playback Engine", "", None),
+    ("ui.audio_device", "Audio Device", "", None),
+    ("window.io_setup", "I/O Setup", "", None),
+    ("window.shortcuts", "Keyboard Shortcuts", "", None),
+    ("view.mix_section", "Mix Window View", "", None),
+    ("view.scroll_into_view", "Scroll Into View", "", None),
+    ("ui.new_tracks_dialog", "New Tracks…", "", None),
+    ("ui.bounce_dialog", "Bounce Mix…", "", None),
+    ("ui.set", "Set UI State", "", None),
+    ("ui.theme", "Appearance", "", None),
+    ("ui.reduce_visual_effects", "Reduce Visual Effects", "", None),
+    ("ui.undo_levels", "Levels of Undo", "", None),
+];
+
+/// Extra catalog mappings handled by the UI layer.
+pub fn ui_aliases() -> Vec<(&'static str, &'static str)> {
+    let mut v: Vec<(&str, &str)> = UI_COMMANDS.iter().filter(|c| !c.2.is_empty()).map(|c| (c.2, c.0)).collect();
+    v.extend(mix_view_aliases().iter().copied());
+    v.extend(AUDIOSUITE.iter().map(|(p, _)| (*p, "audiosuite.process")));
+    v.extend(MENU_WINDOWS.iter().copied());
+    v
+}
+
+/// Mix-view menu paths, allocated once. Rebuilding them on every menu draw leaked a copy per frame.
+fn mix_view_aliases() -> &'static [(&'static str, &'static str)] {
+    static ALIASES: std::sync::OnceLock<Vec<(&str, &str)>> = std::sync::OnceLock::new();
+    ALIASES.get_or_init(|| {
+        [
+            "Inserts A-E",
+            "Inserts F-J",
+            "Sends A-E",
+            "Sends F-J",
+            "I/O",
+            "Track Color",
+            "Comments",
+            "EQ Curve",
+            "Meters and Faders",
+            "All",
+            "Minimal",
+            "Mic Preamps",
+            "Instruments",
+            "Object",
+        ]
+        .into_iter()
+        .map(|sec| {
+            let path: &'static str = Box::leak(format!("View > Mix Window Views > {sec}").into_boxed_str());
+            (path, "view.mix_section")
+        })
+        .collect()
+    })
+}
+
+/// AudioSuite catalog entries → our processes (functional equivalents, our own plugins).
+pub const AUDIOSUITE: &[(&str, &str)] = &[
+    ("AudioSuite > EQ > Channel Strip", "channel_strip"),
+    ("AudioSuite > EQ > EQ3 1-Band", "eq_1band"),
+    ("AudioSuite > EQ > EQ3 7-Band", "eq_7band"),
+    ("AudioSuite > Dynamics > BF-76", "compressor"),
+    ("AudioSuite > Dynamics > Channel Strip", "channel_strip"),
+    ("AudioSuite > Dynamics > Dyn3 Compressor/Limiter", "compressor"),
+    ("AudioSuite > Dynamics > Dyn3 De-Esser", "de_esser"),
+    ("AudioSuite > Dynamics > Dyn3 Expander/Gate", "expander_gate"),
+    ("AudioSuite > Dynamics > Maxim", "maximizer"),
+    ("AudioSuite > Pitch Shift > Pitch II", "pitch_shift"),
+    ("AudioSuite > Pitch Shift > Pitch Shift Legacy", "pitch_shift"),
+    ("AudioSuite > Pitch Shift > Time Shift", "time_stretch"),
+    ("AudioSuite > Pitch Shift > Vari-Fi", "speed_ramp"),
+    ("AudioSuite > Reverb > D-Verb", "room_reverb"),
+    ("AudioSuite > Delay > Mod Delay III", "mod_delay"),
+    ("AudioSuite > Modulation > Sci-Fi", "ring_mod"),
+    ("AudioSuite > Harmonic > Eleven Lite", "saturator"),
+    ("AudioSuite > Harmonic > Lo-Fi", "lofi"),
+    ("AudioSuite > Harmonic > Recti-Fi", "rectifier"),
+    ("AudioSuite > Harmonic > SansAmp PSA-1", "saturator"),
+    ("AudioSuite > Other > DC Offset Removal", "dc_offset_removal"),
+    ("AudioSuite > Other > Duplicate", "duplicate"),
+    ("AudioSuite > Other > Gain", "gain"),
+    ("AudioSuite > Other > Invert", "invert"),
+    ("AudioSuite > Other > Normalize", "normalize"),
+    ("AudioSuite > Other > Reverse", "reverse"),
+    ("AudioSuite > Other > Signal Generator", "signal_generator"),
+    ("AudioSuite > Other > Time Compression Expansion", "time_stretch"),
+];
+
+/// Commands that open a dialog when invoked from a menu (programmatic calls never do).
+const DIALOG_COMMANDS: &[&str] = &[
+    "clip.clear",
+    "track.new",
+    "file.bounce_mix",
+    "session.new",
+    "file.import_audio",
+    "file.import_midi",
+    "session.open",
+    "session.save",
+    "session.save_as",
+    "session.save_copy",
+    "track.group",
+    "edit.repeat",
+    "edit.shift",
+    "edit.fades_create",
+    "setup.session",
+    "event.quantize",
+    "event.transpose",
+    "edit.strip_silence",
+    "clip.auto_rename",
+    "clip.rename",
+    "clip.loop",
+];
+
+/// Shared menu hierarchy for egui and native desktop hosts.
+pub struct MenuNode {
+    pub label: String,
+    pub path: String,
+    pub children: Vec<MenuNode>,
+}
+
+fn insert_path(roots: &mut Vec<MenuNode>, line: &str) {
+    let parts: Vec<&str> = line.split(" > ").collect();
+    let mut level = roots;
+    let mut path = String::new();
+    for (i, p) in parts.iter().enumerate() {
+        if i > 0 {
+            path.push_str(" > ");
+        }
+        path.push_str(p);
+        let idx = match level.iter().position(|n| n.path == path) {
+            Some(i) => i,
+            None => {
+                level.push(MenuNode { label: display_menu_label(&path, p), path: path.clone(), children: Vec::new() });
+                level.len() - 1
+            }
+        };
+        let Some(node) = level.get_mut(idx) else { break };
+        level = &mut node.children;
+    }
+}
+
+/// Offline leaves whose name waits on RFC-0029. They keep the catalog's own text and are listed
+/// beside the processor that implements them, so no menu item disappears.
+const DEFERRED_LABELS: &[&str] = &["AudioSuite > Pitch Shift > Pitch Shift Legacy", "AudioSuite > Other > Time Compression Expansion"];
+
+/// Display names come from our processor registry; paths remain legacy automation keys.
+fn display_menu_label(path: &str, fallback: &str) -> String {
+    if DEFERRED_LABELS.contains(&path) {
+        return fallback.to_string();
+    }
+    if let Some((_, process)) = AUDIOSUITE.iter().find(|(key, _)| *key == path) {
+        if let Some(info) = soundcraft_dsp::plugin_info(process) {
+            return info.name.to_string();
+        }
+        let label = match *process {
+            "pitch_shift" => "Pitch Shift",
+            "time_stretch" => "Time Stretch",
+            "speed_ramp" => "Speed Ramp",
+            _ => fallback,
+        };
+        return label.to_string();
+    }
+    soundcraft_engine::feature_names::display_label(fallback).to_string()
+}
+
+pub fn tree() -> Vec<MenuNode> {
+    let mut roots: Vec<MenuNode> = Vec::new();
+    let mut processors = std::collections::HashSet::new();
+    for line in catalog::catalog() {
+        // Several legacy entries map to one processor. List it once per category,
+        // while keeping every historical path accepted by command_for_path. A deferred leaf keeps
+        // its own catalog name, so it is not folded into the processor it shares.
+        if !DEFERRED_LABELS.contains(&line)
+            && let Some((_, process)) = AUDIOSUITE.iter().find(|(path, _)| *path == line)
+        {
+            let category = line.rsplit_once(" > ").map_or(line, |(category, _)| category);
+            if !processors.insert((category, *process)) {
+                continue;
+            }
+        }
+        insert_path(&mut roots, line);
+    }
+    insert_path(&mut roots, "Window > Reset Panel Layout");
+    // Not in the observed catalog either; Pro Tools lists it right under Identify Sync Point.
+    if let Some(clip) = roots.iter_mut().find(|n| n.path == "Clip") {
+        let at = clip.children.iter().position(|n| n.path == "Clip > Identify Sync Point").map_or(clip.children.len(), |i| i + 1);
+        clip.children.insert(at, MenuNode { label: "Remove Sync Point".into(), path: "Clip > Remove Sync Point".into(), children: Vec::new() });
+    }
+    // Not in the incumbent catalog, but the only UI path to an empty MIDI clip (#282).
+    // It creates a clip rather than acting on the selected ones, so it leads the Clip menu.
+    insert_path(&mut roots, "Clip > New MIDI Clip");
+    if let Some(clip) = roots.iter_mut().find(|n| n.path == "Clip") {
+        clip.children.rotate_right(1);
+    }
+    for (path, _) in MENU_WINDOWS {
+        insert_path(&mut roots, path);
+    }
+    roots
+}
+
+pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
+    let t = crate::theme::Tokens::current();
+    let menu_entries_enabled = !app.ui.show_preferences;
+    let preferences_enabled = preferences_menu_enabled(app);
+    egui::Panel::top("menu_bar").exact_size(24.0).frame(egui::Frame::NONE.fill(t.menu_bar).inner_margin(egui::Margin::symmetric(8, 2))).show(
+        ui,
+        |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
+                ui.menu_button("SoundCraft", |ui| {
+                    ui.add_enabled_ui(menu_entries_enabled, |ui| {
+                        if ui.button("About SoundCraft").clicked() {
+                            app.ui.show_about = true;
+                        }
+                        if ui.add_enabled(preferences_enabled, egui::Button::new("Preferences...")).clicked() {
+                            let _ = app.run("setup.preferences", json!({"value": true}));
+                        }
+                        if ui.button("Check for Updates…").clicked() {
+                            let _ = app.run("app.checkForUpdates", json!({}));
+                        }
+                        if ui.button("Session Info").clicked() {
+                            app.ui.show_session_info = true;
+                        }
+                        if ui.button("Session Audio Health").clicked() {
+                            let _ = app.run("window.audio_health", json!({"value": true}));
+                        }
+                        ui.separator();
+                        if ui.button("Quit").clicked() {
+                            let _ = crate::dialogs::run_or_ask(app, "app.quit", json!({}));
+                        }
+                    });
+                });
+                let extra = ui_aliases();
+                for root in tree() {
+                    ui.menu_button(&root.label, |ui| {
+                        scrolling(ui, |ui| {
+                            ui.add_enabled_ui(menu_entries_enabled, |ui| {
+                                for c in &root.children {
+                                    menu_node(app, ui, c, &extra);
+                                    if c.path == "File > Open" {
+                                        crate::recent::menu(app, ui);
+                                    }
+                                    if c.path == "Track > New..." {
+                                        instrument_menu(app, ui);
+                                    }
+                                }
+                                if root.path == "AudioSuite" {
+                                    ui.separator();
+                                    ui.label(egui::RichText::new("Processes selected clips offline").small().color(t.text_dim));
+                                }
+                                if root.path == "Window" {
+                                    ui.separator();
+                                    let mut separate = app.ui.mix_separate;
+                                    if ui
+                                        .checkbox(&mut separate, "Mix in Separate Window")
+                                        .on_hover_text("Show Edit and Mix at once, e.g. one per monitor")
+                                        .changed()
+                                    {
+                                        let _ = run_ui_command(app, "window.mix_separate", &json!({"value": separate}));
+                                        ui.close();
+                                    }
+                                }
+                            })
+                        });
+                    });
+                }
+                let title = format!(
+                    "{}{}  —  {}",
+                    app.engine.session().name,
+                    if app.engine.is_dirty() { " *" } else { "" },
+                    if app.ui.window == MainWindow::Edit || app.ui.mix_separate { "Edit" } else { "Mix" }
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(egui::RichText::new(title).color(t.text_dim));
+                });
+            });
+        },
+    );
+}
+
+/// A menu taller than the window scrolls instead of running off its bottom edge (#1482).
+fn scrolling<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let max_h = (ui.ctx().content_rect().height() - 40.0).max(120.0);
+    egui::ScrollArea::vertical().max_height(max_h).show(ui, add).inner
+}
+
+/// Track › Instrument: the instrument picker for the selected instrument track (#374).
+fn instrument_menu(app: &mut SoundApp, ui: &mut egui::Ui) {
+    match instrument_track(app.engine.session()) {
+        Some(id) => {
+            ui.menu_button("Instrument", |ui| crate::mix_window::instrument_menu(app, ui, id));
+        }
+        None => {
+            ui.add_enabled(false, egui::Button::new("Instrument")).on_disabled_hover_text("Select an instrument track");
+        }
+    }
+}
+
+/// The first selected instrument track, in track order.
+fn instrument_track(s: &soundcraft_model::Session) -> Option<soundcraft_model::TrackId> {
+    s.tracks.iter().find(|t| t.kind == soundcraft_model::TrackKind::Instrument && s.edit.selected_tracks.contains(&t.id)).map(|t| t.id)
+}
+
+fn menu_node(app: &mut SoundApp, ui: &mut egui::Ui, n: &MenuNode, extra: &[(&str, &str)]) {
+    if !n.children.is_empty() {
+        ui.menu_button(&n.label, |ui| {
+            scrolling(ui, |ui| {
+                for c in &n.children {
+                    menu_node(app, ui, c, extra);
+                }
+            });
+        });
+        return;
+    }
+    let id = command_for_path(&n.path, extra);
+    let (enabled, checked) = item_state(app, &n.path, id.as_deref());
+    let label = live_label(app, id.as_deref()).unwrap_or_else(|| n.label.clone());
+    let label = if checked { format!("✔ {label}") } else { label };
+    let shortcut = id.as_deref().and_then(shortcut_for).unwrap_or("");
+    let btn = egui::Button::new(label).shortcut_text(crate::shortcuts::shortcut_label(shortcut, ui.ctx().os().is_mac()));
+    let response = ui.add_enabled(enabled, btn);
+    let response = if catalog::is_placeholder(&n.path) { response.on_disabled_hover_text("Not available yet.") } else { response };
+    if response.clicked()
+        && let Some(id) = id
+    {
+        invoke_menu(app, &id, &n.path);
+        ui.close();
+    }
+}
+
+/// Resolve the command behind a menu leaf, including UI dialog overrides.
+pub fn command_for_path(path: &str, extra: &[(&str, &str)]) -> Option<String> {
+    catalog::implemented_by(path, extra).or_else(|| MENU_WINDOWS.iter().find(|(p, _)| *p == path).map(|(_, w)| w.to_string()))
+}
+
+/// Enabled and checked state shared by all menu presentations.
+pub fn item_state(app: &SoundApp, path: &str, id: Option<&str>) -> (bool, bool) {
+    let enabled = if app.ui.show_preferences || catalog::is_placeholder(path) {
+        false
+    } else {
+        match id {
+            Some("setup.preferences") => preferences_menu_enabled(app),
+            Some(i)
+                if i.starts_with("window.")
+                    || i.starts_with("view.mix_section")
+                    || matches!(i, "audiosuite.process" | "ui.dock" | "ui.dock.reset") =>
+            {
+                true
+            }
+            Some(i) => soundcraft_engine::find_command(i).is_some_and(|c| (c.enabled)(&app.engine).is_ok() && !app.engine.blocked_while_recording(i)),
+            None => false,
+        }
+    };
+    (enabled, checked_state(app, path, id))
+}
+
+/// Preferences cannot replace audio resources while transport is active or another Preferences
+/// instance is already modal.
+fn preferences_menu_enabled(app: &SoundApp) -> bool {
+    !app.ui.show_preferences && !app.is_playing() && !app.engine.transport.recording
+}
+
+fn checked_state(app: &SoundApp, path: &str, id: Option<&str>) -> bool {
+    let e = &app.engine.session().edit;
+    match id {
+        Some("options.loop_playback") => e.loop_playback,
+        Some("options.loop_record") => e.loop_record,
+        Some("options.quickpunch") => e.quickpunch,
+        Some("options.pre_post_roll") => e.pre_post_roll,
+        Some("options.link_timeline_edit") => e.link_timeline_edit,
+        Some("options.link_track_edit") => e.link_track_edit,
+        Some("options.insertion_follows_playback") => e.insertion_follows_playback,
+        Some("options.tab_to_transient") => e.tab_to_transient,
+        Some("options.automation_follows_edit") => e.automation_follows_edit,
+        Some("options.markers_follow_edit") => e.markers_follow_edit,
+        Some("options.click") => e.click,
+        Some("options.delay_compensation") => e.delay_compensation,
+        Some("options.pre_fader_metering") => e.pre_fader_metering,
+        Some("view.ruler") => path.rsplit(" > ").next().map(ruler_id).is_some_and(|r| e.rulers.iter().any(|x| x == r)),
+        Some("view.main_counter") => path.rsplit(" > ").next().map(ruler_id).is_some_and(|r| e.main_counter.id() == r),
+        Some("window.mix") => app.ui.window == MainWindow::Mix,
+        Some("window.edit") => app.ui.window == MainWindow::Edit,
+        Some("window.track_list") => app.ui.show_tracks_list,
+        Some("window.clip_list_view") | Some("window.clip_list") => app.ui.show_clip_list,
+        Some("window.narrow_mix") => app.ui.narrow_mix,
+        Some("window.renderer") => app.extra.show_renderer,
+        Some("window.ui_customization") => app.extra.show_ui_customization,
+        Some("window.config_auto_update") => app.extra.auto_update_config,
+        Some("view.mix_section") => path.rsplit(" > ").next().map(mix_section_id).is_some_and(|s| app.ui.mix_views.iter().any(|v| v == s)),
+        _ => false,
+    }
+}
+
+fn ruler_id(label: &str) -> &'static str {
+    match label {
+        "Bars|Beats" => "bars_beats",
+        "Min:Secs" => "min_secs",
+        "Timecode" => "timecode",
+        "Feet+Frames" => "feet_frames",
+        "Samples" => "samples",
+        "Tempo" => "tempo",
+        "Meter" => "meter",
+        "Markers" => "markers",
+        "Key Signature" => "key",
+        "Chord Symbols" => "chords",
+        _ => "",
+    }
+}
+
+fn mix_section_id(label: &str) -> &'static str {
+    match label {
+        "Inserts A-E" => "inserts_ae",
+        "Inserts F-J" => "inserts_fj",
+        "Sends A-E" => "sends_ae",
+        "Sends F-J" => "sends_fj",
+        "I/O" => "io",
+        "Track Color" => "color",
+        "Comments" => "comments",
+        "EQ Curve" => "eq_curve",
+        "Meters and Faders" => "meters",
+        "All" => "all",
+        "Minimal" => "minimal",
+        "Mic Preamps" => "mic_preamps",
+        "Instruments" => "instruments",
+        "Object" => "object",
+        _ => "",
+    }
+}
+
+/// Parameters implied by the menu item a command was reached through.
+fn params_for(path: &str, id: &str) -> Value {
+    let leaf = path.rsplit(" > ").next().unwrap_or("");
+    match id {
+        "view.ruler" => json!({"ruler": ruler_id(leaf)}),
+        "view.main_counter" => json!({"format": ruler_id(leaf)}),
+        "options.scrolling" => {
+            json!({"mode": match leaf { "No Scrolling" => "none", "After Playback" => "after_playback", "Continuous" => "continuous", "Center Playhead" => "center", _ => "page" }})
+        }
+        "options.solo_mode" => {
+            json!({"mode": if leaf.starts_with("AFL") { "afl" } else if leaf.starts_with("PFL") { "pfl" } else { "sip" }, "xor": leaf.starts_with("X-OR")})
+        }
+        "clip.rating" => json!({"rating": leaf.parse::<u8>().unwrap_or(0)}),
+        "track.change_width" => json!({"format": leaf}),
+        "view.mix_section" => json!({"section": mix_section_id(leaf)}),
+        "audiosuite.process" => json!({"process": AUDIOSUITE.iter().find(|(p, _)| *p == path).map_or("", |(_, x)| *x)}),
+        _ => json!({}),
+    }
+}
+
+/// Menu items that open a SoundCraft window when clicked (programmatic calls still run the command).
+const MENU_WINDOWS: &[(&str, &str)] = &[
+    ("Setup > Appearance", "window.ui_customization"),
+    ("Setup > Hardware...", "window.playback_engine"),
+    ("Setup > Playback Engine...", "window.playback_engine"),
+    ("Setup > I/O...", "window.io_setup"),
+    ("Setup > Keyboard Shortcuts...", "window.shortcuts"),
+    ("Setup > Session", "setup.session"),
+    ("Event > Beat Detective", "window.beat_detective"),
+    ("Event > Tempo Operations > Tempo Operations Window", "window.tempo_ops"),
+    ("Event > Time Operations > Time Operations Window", "window.time_ops"),
+    ("Event > MIDI Operations > MIDI Operations Window", "window.midi_ops"),
+    ("Event > MIDI Real-Time Properties", "window.rtp"),
+];
+
+/// The shortcut of an engine or window command.
+pub fn shortcut_for(id: &str) -> Option<&'static str> {
+    soundcraft_engine::find_command(id).map_or_else(|| UI_COMMANDS.iter().find(|c| c.0 == id).and_then(|c| c.3), |c| c.shortcut)
+}
+
+/// Undo and Redo name the step they would undo or redo; other items keep their catalog label.
+pub fn live_label(app: &SoundApp, id: Option<&str>) -> Option<String> {
+    let e = &app.engine;
+    match id? {
+        "edit.undo" => Some(e.undo_label().map_or_else(|| "Can't Undo".into(), |l| format!("Undo {l}"))),
+        "edit.redo" => Some(e.redo_label().map_or_else(|| "Can't Redo".into(), |l| format!("Redo {l}"))),
+        _ => None,
+    }
+}
+
+/// Menu-style invocation: may open a dialog.
+pub fn invoke_menu(app: &mut SoundApp, id: &str, path: &str) {
+    if id == "setup.preferences" {
+        let _ = app.run(id, json!({"value": true}));
+        return;
+    }
+    if let Some((_, w)) = MENU_WINDOWS.iter().find(|(p, _)| *p == path)
+        && w.starts_with("window.")
+    {
+        let _ = app.run(w, json!({"value": true}));
+        return;
+    }
+    if id == "audiosuite.process" {
+        let p = params_for(path, id);
+        app.ui.audiosuite = p.get("process").and_then(Value::as_str).map(str::to_string);
+        return;
+    }
+    if wants_dialog(id) && app.dialogs.open_for_command(&app.engine, id) {
+        return;
+    }
+    // These ids only exist to open a dialog from the menu. Programmatic `app.run` refuses them.
+    if id == "ui.new_tracks_dialog" {
+        let _ = app.dialogs.open_for_command(&app.engine, "track.new");
+        return;
+    }
+    if id == "ui.bounce_dialog" {
+        let _ = app.dialogs.open_for_command(&app.engine, "file.bounce_mix");
+        return;
+    }
+    let params = params_for(path, id);
+    let _ = crate::dialogs::run_or_ask(app, id, params);
+}
+
+/// Keyboard shortcut for a dialog command, or one that would close a modified session: open its
+/// dialog. Returns true when handled.
+pub fn invoke_shortcut_dialog(app: &mut SoundApp, id: &str) -> bool {
+    (wants_dialog(id) && app.dialogs.open_for_command(&app.engine, id)) || crate::dialogs::ask_to_save(app, id, &json!({}))
+}
+
+/// Commands that open a dialog first: the listed ones, Score Setup, and anything that needs a path.
+fn wants_dialog(id: &str) -> bool {
+    DIALOG_COMMANDS.contains(&id) || id == "file.score_setup" || crate::dialogs::takes_path(id)
+}
+
+/// Handle UI-layer commands. Returns None when `id` is not a UI command.
+pub fn run_ui_command(app: &mut SoundApp, id: &str, p: &Value) -> Option<Result<Value, String>> {
+    if matches!(id, "ui.dock" | "ui.dock.reset") {
+        return Some(crate::docking::command(app, id, p));
+    }
+    if let Some(v) = crate::extra_windows::run(app, id, p) {
+        return Some(Ok(v));
+    }
+    if id == "ui.audio_device" {
+        return Some(crate::windows::audio_device_command(app, p));
+    }
+    // Menu clicks never get here: Setup › Playback Engine / Hardware open the window
+    // (`MENU_WINDOWS`). A programmatic call applies the open device instead.
+    if matches!(id, "setup.playback_engine" | "setup.hardware") {
+        return Some(crate::windows::setup_audio_command(app, id, p));
+    }
+    let toggle = |v: &mut bool| {
+        *v = p.get("value").and_then(Value::as_bool).unwrap_or(!*v);
+        json!({"value": *v})
+    };
+    let r = match id {
+        "app.checkForUpdates" | "help.checkForUpdates" => {
+            crate::updates_ui::check(app);
+            json!({})
+        }
+        "window.mix" => {
+            app.ui.window = MainWindow::Mix;
+            app.focus_mix = app.ui.mix_separate;
+            json!({"window": "mix"})
+        }
+        "window.mix_separate" => {
+            let v = toggle(&mut app.ui.mix_separate);
+            app.focus_mix = app.ui.mix_separate;
+            v
+        }
+        "window.edit" => {
+            app.ui.window = MainWindow::Edit;
+            json!({"window": "edit"})
+        }
+        "window.toggle_mix_edit" => {
+            if app.ui.mix_separate {
+                // Both are on screen: bring the Mix window forward instead.
+                app.focus_mix = true;
+            } else {
+                app.ui.window = if app.ui.window == MainWindow::Edit { MainWindow::Mix } else { MainWindow::Edit };
+            }
+            json!({"window": app.ui.window})
+        }
+        "window.transport" => toggle(&mut app.ui.show_transport),
+        "window.big_counter" => toggle(&mut app.ui.show_big_counter),
+        "window.memory_locations" => toggle(&mut app.ui.show_memory_locations),
+        "window.undo_history" => toggle(&mut app.ui.show_undo_history),
+        "window.clip_list" | "window.clip_list_view" => toggle(&mut app.ui.show_clip_list),
+        "window.track_list" => toggle(&mut app.ui.show_tracks_list),
+        "window.narrow_mix" => toggle(&mut app.ui.narrow_mix),
+        "window.session_info" => toggle(&mut app.ui.show_session_info),
+        "window.audio_health" => {
+            app.audio_health_report = None;
+            toggle(&mut app.ui.show_audio_health)
+        }
+        "window.about" => toggle(&mut app.ui.show_about),
+        "window.midi_editor" => toggle(&mut app.ui.show_midi_editor),
+        "window.midi_front" => {
+            app.ui.show_midi_editor = true;
+            json!({"value": true})
+        }
+        "window.midi_back" => {
+            app.ui.show_midi_editor = false;
+            json!({})
+        }
+        "window.automation" => toggle(&mut app.ui.show_automation),
+        "window.clip_effects" | "window.clip_effects_dock" => toggle(&mut app.ui.show_clip_effects),
+        "window.search" => toggle(&mut app.ui.show_search),
+        "window.score" => toggle(&mut app.ui.show_score),
+        "window.beat_detective" => toggle(&mut app.ui.show_beat_detective),
+        "window.tempo_ops" => toggle(&mut app.ui.show_tempo_ops),
+        "window.time_ops" => toggle(&mut app.ui.show_time_ops),
+        "window.midi_ops" => toggle(&mut app.ui.show_midi_ops),
+        "window.rtp" => toggle(&mut app.ui.show_rtp),
+        "window.playback_engine" => toggle(&mut app.ui.show_playback_engine),
+        // The engine catalog already exposes this command. Handling it here keeps the menu,
+        // control channel and scripted callers on the same public command id.
+        "setup.preferences" => {
+            let result = toggle(&mut app.ui.show_preferences);
+            if !app.ui.show_preferences {
+                app.preferences.discard_draft();
+            }
+            result
+        }
+        "window.io_setup" => toggle(&mut app.ui.show_io_setup),
+        "window.shortcuts" => toggle(&mut app.ui.show_shortcuts),
+        "window.color_palette" => toggle(&mut app.ui.show_color_palette),
+        "window.disk_usage" => toggle(&mut app.ui.show_disk_usage),
+        "window.system_usage" => toggle(&mut app.ui.show_system_usage),
+        "window.task_manager" => toggle(&mut app.ui.show_task_manager),
+        "window.metadata" => toggle(&mut app.ui.show_metadata),
+        "window.event_list" => toggle(&mut app.ui.show_event_list),
+        "window.midi_keyboard" => toggle(&mut app.ui.show_midi_keyboard),
+        "window.workspace" | "window.workspace_presets" | "window.workspace_sounds" | "window.workspace_front" => {
+            app.ui.show_workspace = true;
+            json!({"value": true})
+        }
+        "window.workspace_close" => {
+            app.ui.show_workspace = false;
+            json!({"value": false})
+        }
+        "window.configurations" => toggle(&mut app.ui.show_configurations),
+        "window.config_new" | "window.config_update" => {
+            if let Err(error) = crate::docking::validate(&app.ui.docking).and_then(|()| crate::docking::validate_mix(&app.ui.mix_docking)) {
+                return Some(Err(error));
+            }
+            let mut snap = app.ui.clone();
+            snap.configurations.clear();
+            snap.docking_version = crate::docking::LAYOUT_VERSION;
+            let v = serde_json::to_value(&snap).unwrap_or_default();
+            if id == "window.config_update" && !app.ui.configurations.is_empty() {
+                if let Some(last) = app.ui.configurations.last_mut() {
+                    last.1 = v;
+                }
+            } else {
+                let n = app.ui.configurations.len() + 1;
+                app.ui.configurations.push((format!("Configuration {n}"), v));
+            }
+            json!({"configurations": app.ui.configurations.len()})
+        }
+        "window.arrange_tile" | "window.arrange_tile_h" | "window.arrange_tile_v" | "window.arrange_cascade" => {
+            if let Err(error) = crate::docking::arrange(app) {
+                app.ui.status = format!("Panel windows could not be arranged: {error}");
+            }
+            app.arrange_request = true;
+            json!({})
+        }
+        "window.universe" => toggle(&mut app.ui.show_universe),
+        "window.video" => toggle(&mut app.ui.show_video),
+        "window.video_universe" => toggle(&mut app.ui.show_video_universe),
+        "window.close" | "window.hide_floating" => {
+            app.ui.show_transport = false;
+            app.ui.show_big_counter = false;
+            app.ui.show_memory_locations = false;
+            app.ui.show_undo_history = false;
+            app.ui.show_session_info = false;
+            app.ui.show_audio_health = false;
+            app.ui.show_preferences = false;
+            app.preferences.discard_draft();
+            app.ui.show_automation = false;
+            app.ui.plugin_windows.clear();
+            app.ui.audiosuite = None;
+            json!({})
+        }
+        "view.mix_section" => {
+            let sec = p.get("section").and_then(Value::as_str).unwrap_or("");
+            match sec {
+                "all" => {
+                    app.ui.mix_views =
+                        ["inserts_ae", "inserts_fj", "sends_ae", "sends_fj", "io", "comments", "color"].iter().map(ToString::to_string).collect()
+                }
+                "minimal" => app.ui.mix_views.clear(),
+                "" => return Some(Err("`section` required".into())),
+                s => {
+                    if app.ui.mix_views.iter().any(|v| v == s) {
+                        app.ui.mix_views.retain(|v| v != s);
+                    } else {
+                        app.ui.mix_views.push(s.to_string());
+                    }
+                }
+            }
+            json!({"mix_views": app.ui.mix_views})
+        }
+        "view.scroll_into_view" => {
+            // `track` (id or name), else the first selected track: the palette passes no params.
+            let track = match soundcraft_engine::cmd::track_param(&app.engine, id, p, "track") {
+                Ok(Some(t)) => t,
+                Ok(None) => match app.engine.session().edit.selected_tracks.first() {
+                    Some(t) => *t,
+                    None => return Some(Err("view.scroll_into_view: pass `track` or select a track".into())),
+                },
+                Err(e) => return Some(Err(e.to_string())),
+            };
+            app.edit_scroll_into_view = Some(track);
+            app.mix_scroll_into_view = Some(track);
+            json!({"track": track.0})
+        }
+        "ui.new_tracks_dialog" => {
+            return Some(Err("ui.new_tracks_dialog opens a dialog from the menu only; call track.new with parameters".into()));
+        }
+        "ui.bounce_dialog" => {
+            return Some(Err("ui.bounce_dialog opens a dialog from the menu only; call file.bounce_mix with a path".into()));
+        }
+        "ui.theme" => {
+            let Some(mode) = p.get("mode").and_then(Value::as_str) else {
+                return Some(Ok(json!({"mode": app.ui.theme.id()})));
+            };
+            let Some(mode) = crate::theme::ThemeMode::parse(mode) else {
+                return Some(Err(format!("unknown theme `{mode}` (system, light or dark)")));
+            };
+            app.ui.theme = mode;
+            json!({"mode": mode.id()})
+        }
+        "ui.reduce_visual_effects" => {
+            let Some(mode) = p.get("mode").and_then(Value::as_str) else {
+                return Some(Ok(json!({"mode": app.ui.reduce_visual_effects.id()})));
+            };
+            let Some(mode) = crate::preferences::ReduceVisualEffects::parse(mode) else {
+                return Some(Err(format!("unknown visual-effects mode `{mode}` (never, playback or always)")));
+            };
+            app.ui.reduce_visual_effects = mode;
+            json!({"mode": mode.id()})
+        }
+        "ui.undo_levels" => {
+            if let Some(levels) = p.get("levels").and_then(Value::as_u64) {
+                app.ui.undo_levels = usize::try_from(levels).unwrap_or(64).clamp(1, 64);
+                app.engine.set_history_limit(app.ui.undo_levels);
+            }
+            json!({"levels": app.ui.undo_levels})
+        }
+        "ui.set" => match serde_json::to_value(&app.ui) {
+            Ok(mut cur) => {
+                if let (Some(obj), Some(patch)) = (cur.as_object_mut(), p.as_object()) {
+                    for (k, v) in patch {
+                        obj.insert(k.clone(), v.clone());
+                    }
+                }
+                match serde_json::from_value::<crate::UiState>(cur) {
+                    Ok(ns) => {
+                        if let Err(error) = crate::docking::validate(&ns.docking).and_then(|()| crate::docking::validate_mix(&ns.mix_docking)) {
+                            return Some(Err(error));
+                        }
+                        let closed_preferences = app.ui.show_preferences && !ns.show_preferences;
+                        crate::docking::cancel_replaced_state(app, &ns);
+                        app.ui = ns;
+                        app.ui.undo_levels = app.ui.undo_levels.clamp(1, 64);
+                        app.engine.set_history_limit(app.ui.undo_levels);
+                        if closed_preferences {
+                            app.preferences.discard_draft();
+                        }
+                        json!({"ui": app.ui})
+                    }
+                    Err(e) => return Some(Err(format!("bad ui state: {e}"))),
+                }
+            }
+            Err(e) => return Some(Err(e.to_string())),
+        },
+        _ => return None,
+    };
+    Some(Ok(r))
+}
+
+/// Parity including UI-layer commands.
+pub fn parity() -> Value {
+    let extra = ui_aliases();
+    catalog::parity_with(&extra)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Services, SoundApp};
+
+    /// Preferences menu entries follow transport safety and the modal window locks every menu.
+    #[test]
+    fn preferences_menu_state_tracks_transport_and_modality() {
+        let mut app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+        assert!(item_state(&app, "Setup > Preferences...", Some("setup.preferences")).0);
+
+        app.engine.transport.playing = true;
+        assert!(!item_state(&app, "Setup > Preferences...", Some("setup.preferences")).0);
+        app.engine.transport.playing = false;
+        app.engine.transport.recording = true;
+        assert!(!item_state(&app, "Setup > Preferences...", Some("setup.preferences")).0);
+
+        app.engine.transport.recording = false;
+        app.ui.show_preferences = true;
+        assert!(!item_state(&app, "Setup > Preferences...", Some("setup.preferences")).0);
+        assert!(!item_state(&app, "Window > About", Some("window.about")).0);
+        assert!(!item_state(&app, "File > Save Session", Some("session.save")).0);
+    }
+
+    /// Re-selecting Preferences through either menu keeps its modal window open.
+    #[test]
+    fn preferences_menu_always_opens_instead_of_toggling() {
+        let mut app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+        invoke_menu(&mut app, "setup.preferences", "Setup > Preferences...");
+        assert!(app.ui.show_preferences);
+        invoke_menu(&mut app, "setup.preferences", "Setup > Preferences...");
+        assert!(app.ui.show_preferences);
+    }
+
+    /// Generic UI-state updates clamp and immediately synchronize the engine history limit.
+    #[test]
+    fn ui_set_synchronizes_undo_levels_immediately() {
+        let mut app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+
+        let result = app.run("ui.set", json!({"undo_levels": 0})).unwrap();
+        assert_eq!(result["ui"]["undo_levels"], 1);
+        assert_eq!((app.ui.undo_levels, app.engine.history_limit), (1, 1));
+
+        let result = app.run("ui.set", json!({"undo_levels": 100})).unwrap();
+        assert_eq!(result["ui"]["undo_levels"], 64);
+        assert_eq!((app.ui.undo_levels, app.engine.history_limit), (64, 64));
+    }
+
+    #[test]
+    fn mix_view_aliases_are_allocated_once() {
+        let first = ui_aliases();
+        let second = ui_aliases();
+        let a = first.iter().find(|(path, _)| path.contains("Mix Window Views > All")).map(|(path, _)| *path).unwrap();
+        let b = second.iter().find(|(path, _)| path.contains("Mix Window Views > All")).map(|(path, _)| *path).unwrap();
+        assert!(std::ptr::eq(a, b));
+        assert_eq!(first.iter().filter(|(path, _)| path.contains("Mix Window Views")).count(), 14);
+    }
+
+    #[test]
+    fn programmatic_dialog_commands_stay_closed_and_the_menu_opens_them() {
+        let mut app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+        let err = app.run("ui.new_tracks_dialog", json!({})).unwrap_err();
+        assert!(err.contains("track.new"), "{err}");
+        let err = app.run("ui.bounce_dialog", json!({})).unwrap_err();
+        assert!(err.contains("file.bounce_mix"), "{err}");
+        assert!(app.dialogs.open_name().is_none());
+
+        invoke_menu(&mut app, "ui.new_tracks_dialog", "Track > New...");
+        assert_eq!(app.dialogs.open_name(), Some("new_tracks"));
+        app.dialogs.open = None;
+        invoke_menu(&mut app, "ui.bounce_dialog", "File > Bounce Mix...");
+        assert_eq!(app.dialogs.open_name(), Some("bounce"));
+    }
+
+    #[test]
+    fn save_asks_for_a_path_until_the_session_has_one() {
+        let mut app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+        invoke_menu(&mut app, "session.save", "File > Save Session");
+        assert!(matches!(&app.dialogs.open, Some(crate::dialogs::Dialog::PathPrompt { cmd, .. }) if cmd == "session.save_as"));
+        app.dialogs.open = None;
+        assert!(invoke_shortcut_dialog(&mut app, "session.save"));
+        app.dialogs.open = None;
+
+        let dir = std::env::temp_dir().join(format!("soundcraft-save-{}", std::process::id()));
+        let path = dir.join("Song.scraft");
+        app.run("session.save_as", json!({"path": path.to_string_lossy()})).unwrap();
+        app.run("track.new", json!({})).unwrap();
+        assert!(!invoke_shortcut_dialog(&mut app, "session.save"));
+        invoke_menu(&mut app, "session.save", "File > Save Session");
+        assert!(app.dialogs.open.is_none());
+        assert!(!app.engine.is_dirty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn track_instrument_menu_targets_the_selected_instrument_track() {
+        let mut e = soundcraft_engine::Engine::default();
+        let audio = e.execute("track.new", &json!({"kind": "audio"})).unwrap()["tracks"][0].as_u64().unwrap();
+        assert_eq!(instrument_track(e.session()), None);
+        let inst = e.execute("track.new", &json!({"kind": "instrument"})).unwrap()["tracks"][0].as_u64().unwrap();
+        e.execute("edit.select", &json!({"tracks": [audio]})).unwrap();
+        assert_eq!(instrument_track(e.session()), None, "an audio track has no instrument");
+        e.execute("edit.select", &json!({"tracks": [audio, inst]})).unwrap();
+        assert_eq!(instrument_track(e.session()).map(|t| t.0), Some(inst));
+    }
+
+    #[test]
+    fn audiosuite_sci_fi_opens_the_ring_modulator() {
+        let mut app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+        invoke_menu(&mut app, "audiosuite.process", "AudioSuite > Modulation > Sci-Fi");
+        assert_eq!(app.ui.audiosuite.as_deref(), Some("ring_mod"));
+        let info = soundcraft_dsp::plugin_info("ring_mod").unwrap();
+        assert!(info.audiosuite && info.category == soundcraft_dsp::Category::Modulation);
+    }
+
+    #[test]
+    fn offline_menu_uses_own_names_and_keeps_legacy_dispatch() {
+        for (path, process) in AUDIOSUITE {
+            assert_eq!(command_for_path(path, &ui_aliases()).as_deref(), Some("audiosuite.process"));
+            assert_eq!(params_for(path, "audiosuite.process")["process"], *process);
+            if DEFERRED_LABELS.contains(path) {
+                continue;
+            }
+            if let Some(info) = soundcraft_dsp::plugin_info(process) {
+                assert_eq!(display_menu_label(path, "ignored"), info.name);
+            }
+        }
+        let tree = tree();
+        let offline = tree.iter().find(|node| node.path == "AudioSuite").unwrap();
+        assert_eq!(offline.label, "AudioSuite");
+        let dynamics = offline.children.iter().find(|node| node.path == "AudioSuite > Dynamics").unwrap();
+        assert_eq!(dynamics.children.iter().filter(|node| node.label == "Compressor/Limiter").count(), 1);
+        let mut app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+        let command = command_for_path("Event > Beat Detective", &ui_aliases()).unwrap();
+        invoke_menu(&mut app, &command, "Event > Beat Detective");
+        assert!(app.ui.show_beat_detective);
+        for (path, expected) in [
+            ("AudioSuite > Pitch Shift > Vari-Fi", "Speed Ramp"),
+            ("AudioSuite > Harmonic > Lo-Fi", "Bit Crusher"),
+            ("Track > ARA Plugins > Melodyne", "No ARA plug-ins"),
+            ("Options > Activate HEAT", "Activate Analog Saturation"),
+        ] {
+            assert_eq!(display_menu_label(path, path.rsplit(" > ").next().unwrap()), expected);
+        }
+    }
+
+    /// Leaves deferred to RFC-0029 keep the catalog's own name in the menu, next to the processor
+    /// that implements them: the rename waits, and no catalog item is dropped in the meantime.
+    #[test]
+    fn deferred_leaves_keep_their_catalog_names() {
+        fn labels<'a>(nodes: &'a [MenuNode], path: &str) -> Vec<&'a str> {
+            for node in nodes {
+                if node.path == path {
+                    return node.children.iter().map(|child| child.label.as_str()).collect();
+                }
+                let found = labels(&node.children, path);
+                if !found.is_empty() {
+                    return found;
+                }
+            }
+            Vec::new()
+        }
+        let tree = tree();
+        let pitch_shift = labels(&tree, "AudioSuite > Pitch Shift");
+        assert!(pitch_shift.contains(&"Pitch Shift"), "{pitch_shift:?}");
+        assert!(pitch_shift.contains(&"Pitch Shift Legacy"), "{pitch_shift:?}");
+        assert!(pitch_shift.contains(&"Time Stretch"), "the Time Shift item keeps our processor name: {pitch_shift:?}");
+        let other = labels(&tree, "AudioSuite > Other");
+        assert!(other.contains(&"Time Compression Expansion"), "{other:?}");
+        for path in DEFERRED_LABELS {
+            assert!(AUDIOSUITE.iter().any(|(key, _)| key == path), "{path}");
+            assert_eq!(display_menu_label(path, "kept"), "kept", "{path}");
+        }
+    }
+
+    fn retired_feature_label(label: &str) -> Option<&'static str> {
+        let lower = label.to_lowercase();
+        [
+            "beat detective",
+            "x-form",
+            "quickpunch",
+            "ableton link",
+            "pro tools search",
+            "pro tools projects",
+            "melodyne",
+            "heat",
+            "eq3",
+            "bf-76",
+            "dyn3",
+            "maxim",
+            "pitch ii",
+            "vari-fi",
+            "d-verb",
+            "mod delay iii",
+            "sci-fi",
+            "eleven lite",
+            "lo-fi",
+            "recti-fi",
+            "sansamp psa-1",
+        ]
+        .into_iter()
+        // Whole labels or words: Maximizer is our processor, not the retired Maxim name.
+        .find(|retired| {
+            lower.match_indices(retired).any(|(start, token)| {
+                let before = lower[..start].chars().next_back();
+                let after = lower[start + token.len()..].chars().next();
+                before.is_none_or(|c| !c.is_alphanumeric()) && after.is_none_or(|c| !c.is_alphanumeric())
+            })
+        })
+    }
+
+    #[test]
+    fn retired_labels_stay_out_of_rendered_menus_and_public_registries() {
+        fn check(nodes: &[MenuNode]) {
+            for node in nodes {
+                assert_eq!(retired_feature_label(&node.label), None, "{}: {}", node.path, node.label);
+                check(&node.children);
+            }
+        }
+        check(&tree());
+        for (_, label, _, _) in UI_COMMANDS {
+            assert_eq!(retired_feature_label(label), None, "UI command: {label}");
+        }
+        for command in soundcraft_engine::cmd::command_specs() {
+            assert_eq!(retired_feature_label(command.label), None, "{}: {}", command.id, command.label);
+        }
+        for plugin in soundcraft_dsp::plugins() {
+            assert_eq!(retired_feature_label(plugin.name), None, "{}: {}", plugin.id, plugin.name);
+            assert_eq!(retired_feature_label(plugin.short_name), None, "{}: {}", plugin.id, plugin.short_name);
+        }
+        // The guard only checks built-in display values. Paths, processor ids and user text stay unchanged.
+        assert!(AUDIOSUITE.iter().any(|(path, _)| *path == "AudioSuite > Harmonic > Lo-Fi"));
+        assert!(soundcraft_dsp::plugin_info("lofi").is_some());
+        assert_eq!(soundcraft_engine::feature_names::display_label("A future descriptive feature"), "A future descriptive feature");
+    }
+
+    /// A placeholder keeps the incumbent's catalog place with an honest label, and is never
+    /// interactive: `item_state` refuses it however enabled its command would be.
+    #[test]
+    fn feature_placeholders_stay_disabled_with_honest_labels() {
+        fn leaf<'a>(nodes: &'a [MenuNode], path: &str) -> Option<&'a MenuNode> {
+            for node in nodes {
+                if node.path == path && node.children.is_empty() {
+                    return Some(node);
+                }
+                if let Some(found) = leaf(&node.children, path) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        let app = SoundApp::new(soundcraft_engine::Engine::default(), None, Services::default());
+        let tree = tree();
+        for (path, label) in [
+            ("View > Transport > Ableton Link", "Tempo Sync"),
+            ("Track > ARA Plugins > Melodyne", "No ARA plug-ins"),
+            ("Clip > ARA Plugins > Melodyne", "No ARA plug-ins"),
+            ("View > Mix Window Views > HEAT", "Analog Saturation"),
+            ("Options > Activate HEAT", "Activate Analog Saturation"),
+        ] {
+            assert!(catalog::is_placeholder(path), "{path} is not listed as a placeholder");
+            let node = leaf(&tree, path).unwrap_or_else(|| panic!("placeholder missing from the menu: {path}"));
+            assert_eq!(node.label, label, "{path}");
+            let id = command_for_path(path, &ui_aliases());
+            assert!(!item_state(&app, path, id.as_deref()).0, "{path} must stay disabled");
+        }
+        // The flag command behind Tempo Sync is still registered (ids stay), only its menu item is a
+        // placeholder: nothing claims a synchronization protocol we do not implement.
+        assert!(soundcraft_engine::find_command("view.transport_ableton_link").is_some());
+    }
+
+    #[test]
+    fn display_guard_rejects_retired_labels_without_rejecting_own_processors() {
+        for label in ["Beat Detective", "QuickPunch", "Activate HEAT", "BF-76", "Dyn3 De-Esser", "Lo-Fi"] {
+            assert!(retired_feature_label(label).is_some(), "{label}");
+        }
+        // Deferred to RFC-0029: these keep the incumbent's label, so the guard must allow them.
+        for label in [
+            "Offline Processing",
+            "AudioSuite",
+            "Beat Analysis",
+            "Elastic Audio",
+            "Elastic Properties",
+            "TrackPunch",
+            "Pitch Shift Legacy",
+            "Time Compression Expansion",
+            "Rendered (High Quality)",
+            "Maximizer",
+            "Bit Crusher",
+            "Room Reverb",
+        ] {
+            assert_eq!(retired_feature_label(label), None, "{label}");
+        }
+    }
+}

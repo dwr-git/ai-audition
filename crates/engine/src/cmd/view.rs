@@ -1,0 +1,418 @@
+//! View menu commands that change saved view state (zoom, rulers, counters, grid/nudge).
+use super::{CommandSpec, always, bad, bool_or, f32_or, f64_or, i64_or, position_param, str_param};
+
+use crate::{Engine, Result, cmd};
+use serde_json::{Value, json};
+use soundcraft_time::{FeetFramesValue, GridScale, GridValue, MAX_POSITION, NoteValue, TimeFormat, TimecodeValue};
+
+/// Returns commands that control saved view, counter, Grid, and Nudge state.
+pub fn specs() -> Vec<CommandSpec> {
+    vec![
+        cmd!(view "view.zoom_in", "Zoom In", [], Some("Cmd+]"), "{}", always, |e, _| zoom(e, 0.5, None)),
+        cmd!(view "view.zoom_out", "Zoom Out", [], Some("Cmd+["), "{}", always, |e, _| zoom(e, 2.0, None)),
+        cmd!(view "view.zoom_by", "Zoom By", [], None, "{factor: >1 zooms in, x?: px into the timeline to hold (else the insertion point if on screen)}", always, |e, p| {
+            let f = p.get("factor").and_then(Value::as_f64).filter(|f| *f > 0.0).ok_or_else(|| bad("view.zoom_by", "factor must be a positive number"))?;
+            zoom(e, 1.0 / f, p.get("x").and_then(Value::as_f64))
+        }),
+        cmd!(view "view.zoom_set", "Set Zoom", [], None, "{samples_per_px}", always, |e, p| {
+            let v = f64_or(p, "samples_per_px", 1024.0).clamp(MIN_SPP, MAX_SPP);
+            e.zoom_mut().samples_per_px = v;
+            Ok(json!({"samples_per_px": v}))
+        }),
+        cmd!(view "view.zoom_preset", "Zoom Preset", [], Some("Cmd+Ctrl+1-5"), "{preset: 1..5, store?: bool}", always, |e, p| {
+            let i = (i64_or(p, "preset", 1).clamp(1, 5) - 1) as usize;
+            let z = e.zoom_mut();
+            if bool_or(p, "store", false) {
+                if let Some(slot) = z.presets.get_mut(i) { *slot = z.samples_per_px }
+            } else if let Some(v) = z.presets.get(i) {
+                z.samples_per_px = v.clamp(MIN_SPP, MAX_SPP);
+            }
+            Ok(json!({"samples_per_px": z.samples_per_px}))
+        }),
+        cmd!(view "view.zoom_to_selection", "Zoom to Selection", [], Some("Alt+F"), "{width_px?: 1200}", always, |e, p| {
+            let w = f64_or(p, "width_px", 1200.0).max(100.0);
+            let r = e.session().edit.selection;
+            if !r.is_empty() {
+                let z = e.zoom_mut();
+                z.samples_per_px = (r.len() as f64 / w).clamp(MIN_SPP, MAX_SPP);
+                z.scroll = r.start;
+            }
+            Ok(json!({}))
+        }),
+        cmd!(view "view.zoom_fit", "Fill Window With Session", [], Some("Alt+A"), "{width_px?: 1200}", always, |e, p| {
+            let w = f64_or(p, "width_px", 1200.0).max(100.0);
+            let s = e.session();
+            let end = s.content_end().max(s.sample_rate.samples(30.0));
+            let z = e.zoom_mut();
+            z.samples_per_px = (end as f64 * 1.05 / w).clamp(MIN_SPP, MAX_SPP);
+            z.scroll = 0;
+            Ok(json!({}))
+        }),
+        cmd!(view "view.scroll", "Scroll Timeline", [], None, "{to?: position, by_px?: n}", always, |e, p| {
+            let to = position_param(e, "view.scroll", p, "to")?;
+            let by = f64_or(p, "by_px", 0.0);
+            let z = e.zoom_mut();
+            let by = soundcraft_time::to_samples(by * z.samples_per_px);
+            z.scroll = to.unwrap_or(z.scroll.saturating_add(by)).clamp(0, MAX_POSITION);
+            Ok(json!({"scroll": z.scroll}))
+        }),
+        cmd!(view "view.waveform_zoom", "Waveform Zoom", [], Some("Cmd+Alt+[ / ]"), "{factor?: 2 | value}", always, |e, p| {
+            let z = e.zoom_mut();
+            let w = if let Some(v) = p.get("value").and_then(Value::as_f64) { v as f32 } else { z.waveform_zoom * f32_or(p, "factor", 2.0) };
+            z.waveform_zoom = if w.is_finite() { w.clamp(0.25, 64.0) } else { 1.0 };
+            Ok(json!({"waveform_zoom": z.waveform_zoom}))
+        }),
+        cmd!(noundo "view.ruler", "Rulers", ["View", "Rulers"], None, "{ruler: bars_beats|min_secs|timecode|feet_frames|samples|tempo|meter|markers|key|chords, visible?: bool}", always, ruler),
+        cmd!(noundo "view.main_counter", "Main Counter", ["View", "Main Counter"], None, "{format: bars_beats|min_secs|timecode|feet_frames|samples}", always, |e, p| {
+            let f = str_param(p, "format").and_then(TimeFormat::from_id).ok_or_else(|| bad("view.main_counter", "unknown format"))?;
+            let edit = &mut e.session_mut().edit;
+            edit.main_counter = f;
+            let scale = grid_scale(f);
+            if edit.grid_follow_main && edit.grid.scale() != scale {
+                edit.grid = GridValue::for_scale(scale);
+            }
+            if edit.grid_follow_main {
+                edit.grid_clips_markers = false;
+            }
+            if edit.nudge_follow_main && edit.nudge.scale() != scale {
+                edit.nudge = GridValue::for_scale(scale);
+            }
+            Ok(json!({"format": f}))
+        }),
+        cmd!(noundo "view.sub_counter", "Sub Counter", [], None, "{format?: … | null}", always, |e, p| {
+            let f = str_param(p, "format").and_then(TimeFormat::from_id);
+            e.session_mut().edit.sub_counter = f;
+            Ok(json!({"format": f}))
+        }),
+        cmd!(noundo "view.grid", "Grid Value", [], Some("Shift+=/-"), "{value?, step?, format?: bars_beats|min_secs|timecode|feet_frames|samples|clips_markers, follow_main?: bool, lines?: bool}", always, |e, p| {
+            let current = e.session().edit.grid;
+            let requested_scale = str_param(p, "format").and_then(GridScale::from_id);
+            let mut g = requested_grid_value(p, current).ok_or_else(|| bad("view.grid", "unknown grid value or format"))?;
+            let lines = p.get("lines").and_then(Value::as_bool);
+            let follow = p.get("follow_main").and_then(Value::as_bool);
+            if follow == Some(true) {
+                let scale = grid_scale(e.session().edit.main_counter);
+                if g.scale() != scale {
+                    g = GridValue::for_scale(scale);
+                }
+            }
+            let s = e.session_mut();
+            s.edit.grid = g;
+            if p.get("value").is_some() || p.get("step").is_some() {
+                s.edit.grid_clips_markers = false;
+            }
+            if let Some(scale) = requested_scale {
+                s.edit.grid_clips_markers = scale == GridScale::ClipsMarkers;
+            }
+            if follow == Some(true) {
+                s.edit.grid_clips_markers = false;
+            }
+            s.edit.grid_follow_main = follow.unwrap_or(
+                s.edit.grid_follow_main && !s.edit.grid_clips_markers && g.scale() == grid_scale(s.edit.main_counter),
+            );
+            if let Some(l) = lines { s.edit.grid_lines = l }
+            let format = if s.edit.grid_clips_markers { GridScale::ClipsMarkers } else { g.scale() };
+            Ok(json!({"grid": g.label(), "format": format.id(), "follow_main": s.edit.grid_follow_main}))
+        }),
+        cmd!(noundo "view.grid_lines", "Show Grid Lines", [], None, "{value?: bool}", always, |e, p| {
+            let s = e.session_mut();
+            s.edit.grid_lines = p.get("value").and_then(Value::as_bool).unwrap_or(!s.edit.grid_lines);
+            Ok(json!({"value": s.edit.grid_lines}))
+        }),
+        cmd!(noundo "view.nudge", "Nudge Value", [], Some("Alt+Shift+=/-"), "{value?, step?, format?: bars_beats|min_secs|timecode|feet_frames|samples, follow_main?: bool}", always, |e, p| {
+            let current = e.session().edit.nudge;
+            if str_param(p, "format").and_then(GridScale::from_id) == Some(GridScale::ClipsMarkers) {
+                return Err(bad("view.nudge", "Clips/Markers is available only for Grid"));
+            }
+            let mut g = requested_grid_value(p, current).ok_or_else(|| bad("view.nudge", "unknown nudge value or format"))?;
+            let follow = p.get("follow_main").and_then(Value::as_bool);
+            if follow == Some(true) {
+                let scale = grid_scale(e.session().edit.main_counter);
+                if g.scale() != scale {
+                    g = GridValue::for_scale(scale);
+                }
+            }
+            let edit = &mut e.session_mut().edit;
+            edit.nudge = g;
+            edit.nudge_follow_main = follow.unwrap_or(edit.nudge_follow_main && g.scale() == grid_scale(edit.main_counter));
+            Ok(json!({"nudge": g.label(), "format": g.scale().id(), "follow_main": edit.nudge_follow_main}))
+        }),
+    ]
+}
+
+const MIN_SPP: f64 = 0.25;
+const MAX_SPP: f64 = 1_000_000.0;
+/// Pixel column an off-screen edit cursor is brought to when zooming (the engine does not know the viewport width).
+const OFFSCREEN_CURSOR_PX: f64 = 500.0;
+
+fn zoom(e: &mut Engine, f: f64, x: Option<f64>) -> Result<Value> {
+    let insertion = e.session().edit.selection.start as f64;
+    let z = e.zoom_mut();
+    let (old, scroll) = (z.samples_per_px, z.scroll as f64);
+    let new = (old * f).clamp(MIN_SPP, MAX_SPP);
+    // Without a pointer, the edit cursor is the reference: held in place when visible, centred when off-screen.
+    let cursor_x = (insertion - scroll) / old;
+    if let Some(x) = x {
+        z.scroll = soundcraft_time::to_samples(scroll + x * (old - new)).clamp(0, MAX_POSITION);
+    } else if (0.0..4000.0).contains(&cursor_x) {
+        z.scroll = soundcraft_time::to_samples(scroll + cursor_x * (old - new)).clamp(0, MAX_POSITION);
+    } else {
+        z.scroll = soundcraft_time::to_samples(insertion - OFFSCREEN_CURSOR_PX * new).clamp(0, MAX_POSITION);
+    }
+    z.samples_per_px = new;
+    Ok(json!({"samples_per_px": new, "scroll": z.scroll}))
+}
+
+fn ruler(e: &mut Engine, p: &Value) -> Result<Value> {
+    const ALL: [&str; 10] = ["bars_beats", "min_secs", "timecode", "feet_frames", "samples", "tempo", "meter", "markers", "key", "chords"];
+    let r = str_param(p, "ruler").filter(|r| ALL.contains(r)).ok_or_else(|| bad("view.ruler", "unknown ruler"))?.to_string();
+    let s = e.session_mut();
+    let shown = s.edit.rulers.contains(&r);
+    let vis = p.get("visible").and_then(Value::as_bool).unwrap_or(!shown);
+    s.edit.rulers.retain(|x| x != &r);
+    if vis {
+        s.edit.rulers.push(r.clone());
+        s.edit.rulers.sort_by_key(|x| ALL.iter().position(|a| a == x));
+    }
+    Ok(json!({"ruler": r, "visible": vis}))
+}
+
+/// `value`, or the value `step` places larger (or smaller, when negative) than `current`.
+fn value_or_step(p: &Value, current: GridValue) -> Option<GridValue> {
+    let Some(step) = p.get("step").and_then(Value::as_i64) else { return grid_param(p, "value") };
+    Some((0..step.unsigned_abs().min(16)).fold(current, |g, _| g.stepped(step > 0)))
+}
+
+/// Maps a counter format to the corresponding Grid/Nudge scale.
+fn grid_scale(format: TimeFormat) -> GridScale {
+    match format {
+        TimeFormat::BarsBeats => GridScale::BarsBeats,
+        TimeFormat::MinSecs => GridScale::MinSecs,
+        TimeFormat::Timecode => GridScale::Timecode,
+        TimeFormat::FeetFrames => GridScale::FeetFrames,
+        TimeFormat::Samples => GridScale::Samples,
+    }
+}
+
+/// Resolves an explicit value, a step, or a scale change while preserving the current increment.
+fn requested_grid_value(p: &Value, current: GridValue) -> Option<GridValue> {
+    if p.get("value").is_some() || p.get("step").is_some() {
+        return value_or_step(p, current);
+    }
+    let scale = str_param(p, "format").and_then(GridScale::from_id);
+    match scale {
+        Some(GridScale::ClipsMarkers) => Some(current),
+        Some(scale) if current.scale() == scale => Some(current),
+        Some(scale) => Some(GridValue::for_scale(scale)),
+        None if p.get("follow_main").is_some() || p.get("lines").is_some() => Some(current),
+        None => None,
+    }
+}
+
+/// Parse grid/nudge values; legacy `1` and `1/1` mean a bar, while `whole` means four quarter notes.
+pub fn grid_param(p: &Value, key: &str) -> Option<GridValue> {
+    let v = p.get(key)?;
+    if let Some(sec) = v.get("seconds").and_then(Value::as_f64) {
+        return sec.is_finite().then_some(GridValue::Seconds(sec.clamp(0.000_01, 3600.0)));
+    }
+    if let Some(f) = v.get("frames").and_then(Value::as_i64) {
+        return Some(GridValue::Frames(f.clamp(1, 100_000)));
+    }
+    if let Some(value) = v.get("timecode").and_then(Value::as_str).and_then(TimecodeValue::from_id) {
+        return Some(GridValue::Timecode(value));
+    }
+    if let Some(value) = v.get("feet_frames").and_then(Value::as_str).and_then(FeetFramesValue::from_id) {
+        return Some(GridValue::FeetFrames(value));
+    }
+    if let Some(n) = v.get("samples").and_then(Value::as_i64) {
+        return Some(GridValue::Samples(n.clamp(1, i64::from(u32::MAX))));
+    }
+    let s = v.as_str()?.trim().to_ascii_lowercase();
+    let triplet = s.ends_with('t') || s.contains("triplet");
+    let dotted = s.ends_with('.') || s.contains("dotted");
+    let core = s.replace("triplet", "").replace("dotted", "");
+    let core = core.trim().trim_end_matches(['t', '.']);
+    let value = match core.trim() {
+        "1" | "1/1" | "1 bar" | "bar" => NoteValue::Bar,
+        "whole" | "whole note" => NoteValue::Whole,
+        "1/2" => NoteValue::Half,
+        "1/4" => NoteValue::Quarter,
+        "1/8" => NoteValue::Eighth,
+        "1/16" => NoteValue::Sixteenth,
+        "1/32" => NoteValue::ThirtySecond,
+        "1/64" => NoteValue::SixtyFourth,
+        _ => return None,
+    };
+    Some(GridValue::Note { value, dotted, triplet })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soundcraft_time::Samples;
+    /// Grid values accept compact and word-form musical modifiers plus every absolute scale.
+    #[test]
+    fn grid_values_parse() {
+        assert_eq!(grid_param(&json!({"v": "1/16"}), "v"), Some(GridValue::Note { value: NoteValue::Sixteenth, dotted: false, triplet: false }));
+        assert_eq!(grid_param(&json!({"v": "1/8t"}), "v"), Some(GridValue::Note { value: NoteValue::Eighth, dotted: false, triplet: true }));
+        assert_eq!(grid_param(&json!({"v": "1/8 triplet"}), "v"), Some(GridValue::Note { value: NoteValue::Eighth, dotted: false, triplet: true }));
+        assert_eq!(grid_param(&json!({"v": "1/4."}), "v"), Some(GridValue::Note { value: NoteValue::Quarter, dotted: true, triplet: false }));
+        for alias in ["1", "1/1"] {
+            assert_eq!(grid_param(&json!({"v": alias}), "v"), Some(GridValue::Note { value: NoteValue::Bar, dotted: false, triplet: false }));
+        }
+        assert_eq!(grid_param(&json!({"v": "whole"}), "v"), Some(GridValue::Note { value: NoteValue::Whole, dotted: false, triplet: false }));
+        assert_eq!(grid_param(&json!({"v": "whole note"}), "v"), Some(GridValue::Note { value: NoteValue::Whole, dotted: false, triplet: false }));
+        assert_eq!(grid_param(&json!({"v": {"seconds": 0.5}}), "v"), Some(GridValue::Seconds(0.5)));
+        assert_eq!(grid_param(&json!({"v": {"timecode": "quarter_frame"}}), "v"), Some(GridValue::Timecode(TimecodeValue::QuarterFrame)));
+        assert_eq!(grid_param(&json!({"v": {"feet_frames": "foot"}}), "v"), Some(GridValue::FeetFrames(FeetFramesValue::Foot)));
+        assert_eq!(grid_param(&json!({"v": "nonsense"}), "v"), None);
+    }
+
+    /// Explicit values and formats retain Follow Main only when the selected scale still matches.
+    #[test]
+    fn explicit_grid_and_nudge_scales_keep_follow_state_consistent() {
+        for command in ["view.grid", "view.nudge"] {
+            let mut e = Engine::default();
+            e.execute("view.main_counter", &json!({"format": "min_secs"})).unwrap();
+            e.execute(command, &json!({"follow_main": true})).unwrap();
+            let result = e.execute(command, &json!({"value": {"seconds": 0.1}})).unwrap();
+            assert_eq!(result["follow_main"], true);
+            let result = e.execute(command, &json!({"value": {"feet_frames": "foot"}})).unwrap();
+            assert_eq!(result["follow_main"], false);
+            e.execute(command, &json!({"follow_main": true})).unwrap();
+            let result = e.execute(command, &json!({"format": "bars_beats"})).unwrap();
+            assert_eq!(result["follow_main"], false);
+        }
+        let mut e = Engine::default();
+        e.execute("view.grid", &json!({"format": "clips_markers"})).unwrap();
+        assert!(!e.session().edit.grid_follow_main);
+        e.execute("view.grid", &json!({"value": {"samples": 100}})).unwrap();
+        assert!(!e.session().edit.grid_clips_markers);
+        assert_eq!(e.session().edit.grid, GridValue::Samples(100));
+    }
+
+    /// Historical bar aliases retain meter-dependent duration; the explicit whole note remains distinct.
+    #[test]
+    fn legacy_bar_aliases_and_whole_notes_remain_distinct_in_odd_meter() {
+        let mut e = Engine::default();
+        e.session_mut().tempo = soundcraft_time::TempoMap::new(120.0, 3, 4).unwrap();
+        for (value, expected) in [("1", 72_000), ("1/1", 72_000), ("whole", 96_000)] {
+            e.execute("view.grid", &json!({"value": value, "follow_main": false})).unwrap();
+            let s = e.session();
+            assert_eq!(s.edit.grid.step_samples(0, s.sample_rate, &s.tempo, s.frame_rate), expected);
+        }
+    }
+
+    fn view(e: &Engine) -> (f64, Samples) {
+        (e.session().edit.zoom.samples_per_px, e.session().edit.zoom.scroll)
+    }
+
+    #[test]
+    fn zoom_by_holds_the_position_under_the_pointer() {
+        let mut e = Engine::default();
+        e.execute("view.zoom_set", &json!({"samples_per_px": 100.0})).unwrap();
+        e.execute("view.scroll", &json!({"to": 48_000})).unwrap();
+        e.execute("view.zoom_by", &json!({"factor": 2.0, "x": 300.0})).unwrap();
+        assert_eq!(view(&e), (50.0, 78_000 - 300 * 50));
+        e.execute("view.zoom_by", &json!({"factor": 0.5, "x": 300.0})).unwrap();
+        assert_eq!(view(&e), (100.0, 48_000));
+    }
+
+    #[test]
+    fn zoom_in_brings_an_offscreen_edit_cursor_into_view() {
+        let mut e = Engine::default();
+        e.execute("view.zoom_set", &json!({"samples_per_px": 100.0})).unwrap();
+        e.execute("edit.select", &json!({"start": 1_000_000, "end": 1_000_000})).unwrap();
+        e.execute("view.zoom_in", &json!({})).unwrap();
+        let (spp, scroll) = view(&e);
+        let x = (1_000_000.0 - scroll as f64) / spp;
+        assert!((x - OFFSCREEN_CURSOR_PX).abs() < 1.0, "cursor at {x}px");
+    }
+
+    #[test]
+    fn zoom_and_scroll_stay_in_range() {
+        let mut e = Engine::default();
+        e.execute("edit.select", &json!({"start": 0, "end": 4_000_000_000_i64})).unwrap();
+        e.execute("view.zoom_to_selection", &json!({})).unwrap();
+        assert_eq!(view(&e).0, MAX_SPP);
+        e.execute("view.zoom_by", &json!({"factor": 1e12, "x": 0.0})).unwrap();
+        assert_eq!(view(&e).0, MIN_SPP);
+        e.execute("view.zoom_by", &json!({"factor": 1e-300, "x": 1e300})).unwrap();
+        assert_eq!(view(&e), (MAX_SPP, 0));
+        for bad in [json!(0.0), json!(-2.0), json!("2"), json!(null)] {
+            assert!(e.execute("view.zoom_by", &json!({"factor": bad})).is_err(), "{bad}");
+        }
+        e.execute("view.scroll", &json!({"by_px": 1e300})).unwrap();
+        assert_eq!(view(&e).1, MAX_POSITION);
+        e.execute("view.scroll", &json!({"by_px": -1e300})).unwrap();
+        assert_eq!(view(&e).1, 0);
+    }
+
+    #[test]
+    fn view_commands_skip_undo_the_journal_and_session_copies() {
+        let mut e = Engine::default();
+        let t = e.execute("track.new", &json!({})).unwrap()["tracks"][0].clone();
+        let steps = e.undo_history().len();
+        for db in [-1.0, -2.0] {
+            e.execute_merged("mix.volume", &json!({"track": t, "db": db}), "fader").unwrap();
+            e.execute("view.scroll", &json!({"by_px": 5.0})).unwrap();
+        }
+        assert_eq!(e.undo_history().len(), steps + 1);
+        let state = |e: &Engine| (std::ptr::from_ref(e.session()), e.revision, e.journal.len());
+        let before = state(&e);
+        e.execute("view.zoom_by", &json!({"factor": 2.0})).unwrap();
+        e.execute("view.scroll", &json!({"by_px": 1.0})).unwrap();
+        assert_eq!(state(&e), before);
+    }
+
+    /// Grid and Nudge steps drive edit movement while preserving their selected increments.
+    #[test]
+    fn grid_and_nudge_values_step_and_nudges_can_use_the_next_value() {
+        let mut e = Engine::default();
+        e.execute("view.grid", &json!({"value": "1/16"})).unwrap();
+        e.execute("view.grid", &json!({"step": 2})).unwrap();
+        assert_eq!(e.session().edit.grid.label(), "1/4 note");
+        e.execute("view.grid", &json!({"step": -1})).unwrap();
+        assert_eq!(e.session().edit.grid.label(), "1/8 note");
+        e.execute("view.nudge", &json!({"value": {"seconds": 0.01}})).unwrap();
+        e.execute("view.nudge", &json!({"step": i64::MIN})).unwrap();
+        assert_eq!(e.session().edit.nudge, GridValue::Seconds(0.001));
+        assert!(e.execute("view.nudge", &json!({"step": "up"})).is_err());
+        let t = e.execute("track.new", &json!({})).unwrap()["tracks"][0].clone();
+        e.execute("view.nudge", &json!({"value": "1/16"})).unwrap();
+        e.execute("edit.select", &json!({"tracks": [t], "start": 0, "end": 1000})).unwrap();
+        e.execute("edit.nudge", &json!({"direction": 1, "next": true})).unwrap();
+        assert_eq!(e.session().edit.selection.start, 12_000);
+        e.execute("edit.nudge", &json!({"direction": -1})).unwrap();
+        assert_eq!(e.session().edit.selection.start, 6_000);
+        assert_eq!(e.session().edit.nudge.label(), "1/16 note");
+    }
+
+    /// Grid and Nudge expose independent scale-following state, while Clips/Markers remains Grid-only.
+    #[test]
+    fn grid_and_nudge_choose_scales_follow_the_main_counter_and_keep_clips_markers_grid_only() {
+        let mut e = Engine::default();
+        e.execute("view.grid", &json!({"format": "timecode", "follow_main": false})).unwrap();
+        assert_eq!(e.session().edit.grid, GridValue::Timecode(TimecodeValue::Frame));
+        e.execute("view.grid", &json!({"value": {"timecode": "quarter_frame"}})).unwrap();
+        e.execute("view.grid", &json!({"format": "clips_markers", "follow_main": false})).unwrap();
+        assert_eq!(e.session().edit.grid, GridValue::Timecode(TimecodeValue::QuarterFrame));
+        assert!(e.session().edit.grid_clips_markers);
+        assert!(e.execute("view.nudge", &json!({"format": "clips_markers"})).is_err());
+
+        e.execute("view.grid", &json!({"follow_main": true})).unwrap();
+        e.execute("view.nudge", &json!({"follow_main": true})).unwrap();
+        assert_eq!((e.session().edit.grid, e.session().edit.nudge), (GridValue::Seconds(1.0), GridValue::Seconds(1.0)));
+        assert!(!e.session().edit.grid_clips_markers);
+        e.execute("view.main_counter", &json!({"format": "samples"})).unwrap();
+        assert_eq!((e.session().edit.grid, e.session().edit.nudge), (GridValue::Samples(100), GridValue::Samples(100)));
+        assert!(e.session().edit.grid_follow_main && e.session().edit.nudge_follow_main);
+
+        e.execute("view.grid", &json!({"format": "bars_beats", "follow_main": false})).unwrap();
+        assert_eq!(e.session().edit.grid, GridValue::default());
+        assert!(!e.session().edit.grid_follow_main);
+        e.execute("view.main_counter", &json!({"format": "timecode"})).unwrap();
+        assert_eq!(e.session().edit.grid, GridValue::default());
+        assert_eq!(e.session().edit.nudge, GridValue::Timecode(TimecodeValue::Frame));
+    }
+}
