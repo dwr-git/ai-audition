@@ -276,7 +276,8 @@ fn counters(app: &mut SoundApp, ui: &mut Ui) {
     format_menu(app, &sub_resp, sub_fmt, "view.sub_counter");
     let st = if app.engine.is_dirty() { "modified" } else { "saved" };
     let dev = app.player.as_ref().map_or("no audio engine", |p| if p.silent { "silent clock" } else { "audio on" });
-    ui.painter().text(pos2(r.max.x - 8.0, y), Align2::RIGHT_CENTER, format!("{st} · {dev}"), regular(10.0), t.text_dim);
+    let state = format!("{} · {}", crate::ru::word(st), crate::ru::word(dev));
+    ui.painter().text(pos2(r.max.x - 8.0, y), Align2::RIGHT_CENTER, state, regular(10.0), t.text_dim);
 }
 
 /// A counter's time-format menu: picking a format runs `command` (`view.main_counter` or

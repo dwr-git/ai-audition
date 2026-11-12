@@ -93,20 +93,21 @@ fn status_bar(app: &mut SoundApp, ui: &mut Ui) {
     let r = ui.max_rect();
     let s = app.engine.session();
     let mut left = format!(
-        "{} · {} Hz · {} · {} tracks · {}",
+        "{} · {} {} · {} · {} · {}",
         s.name,
         s.sample_rate.hz(),
-        match s.bit_depth {
+        crate::ru::word("Hz"),
+        crate::ru::word(match s.bit_depth {
             soundcraft_model::BitDepthSetting::Int16 => "16-bit",
             soundcraft_model::BitDepthSetting::Int24 => "24-bit",
             soundcraft_model::BitDepthSetting::Float32 => "32-bit float",
-        },
-        s.tracks.len(),
-        app.ui.status
+        }),
+        crate::ru::count(s.tracks.len(), "track", "tracks"),
+        crate::ru::word(&app.ui.status)
     );
     soundcraft_model::truncate_chars(&mut left, 4 * soundcraft_model::MAX_NAME_CHARS);
     ui.painter().text(pos2(r.min.x + 10.0, r.center().y), Align2::LEFT_CENTER, left, regular(11.0), t.text_dim);
-    let undo = app.engine.undo_label().map_or(String::new(), |l| format!("Undo {l}"));
+    let undo = app.engine.undo_label().map_or(String::new(), |l| crate::ru::word(&format!("Undo {l}")));
     ui.painter().text(
         pos2(r.max.x - 10.0, r.center().y),
         Align2::RIGHT_CENTER,

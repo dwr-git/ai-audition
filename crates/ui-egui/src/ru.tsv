@@ -58,7 +58,7 @@ Audio Track Record Lock	Блокировка записи аудиодороже
 Audio as MIDI	Звук как MIDI
 Audio files	Аудиофайлы
 Audio system	Звуковая система
-AudioSuite Process	Обработка AudioSuite
+AudioSuite Process	Обработка клипов
 Auto Backup	Автоматическая резервная копия
 Auto Rename	Автопереименование
 Auto-Name Memory Locations when Playing	Автоназвания маркеров при воспроизведении
@@ -633,7 +633,7 @@ Preset name	Имя пресета
 Previous	Назад
 Print Score	Печать партитуры
 Pro Tools Search	Поиск
-Processes selected clips offline	Обрабатывает выбранные клипы офлайн
+Processes selected clips offline	Обрабатывает выбранные клипы навсегда (офлайн)
 Processes the selected clips and replaces them with rendered audio.	Обрабатывает выбранные клипы и заменяет их обработанным звуком.
 Processing	Обработка
 Processor	Процессор
@@ -687,7 +687,7 @@ Rename…	Переименовать…
 Render	Применить
 Render Clip Gain	Применить усиление клипа
 Renderer	Отрисовка
-Renders and AudioSuite processes run to completion before returning.	Рендер и обработка AudioSuite выполняются до конца, прежде чем вернуть управление.
+Renders and AudioSuite processes run to completion before returning.	Рендер и обработка клипов выполняются до конца, прежде чем вернуть управление.
 Renumber Bars	Перенумеровать такты
 Reopen the audio devices with these settings	Заново открыть звуковые устройства с этими настройками
 Repeat	Повторить
@@ -1149,3 +1149,69 @@ REL GRID	ОТН. СЕТКА
 I / O	ВХ / ВЫХ
 INST	ИНСТР
 BED	ОСНОВА
+AudioSuite	Обработка
+Dyn3 Compressor/Limiter	Компрессор/лимитер
+Dyn3 De-Esser	Де-эссер
+Dyn3 Expander/Gate	Экспандер/гейт
+Maxim	Максимайзер
+BF-76	Компрессор (быстрый)
+EQ3 1-Band	Эквалайзер, 1 полоса
+EQ3 7-Band	Эквалайзер, 7 полос
+D-Verb	Реверберация комнаты
+Mod Delay III	Задержка с модуляцией
+Sci-Fi	Кольцевой модулятор
+Eleven Lite	Сатуратор
+Lo-Fi	Понижение качества
+Recti-Fi	Выпрямитель
+SansAmp PSA-1	Предусилитель
+Pitch II	Сдвиг тона
+Pitch Shift Legacy	Сдвиг тона (простой)
+Vari-Fi	Изменение скорости
+Pro Tools Projects	Проекты
+Sibelius	MusicXML
+VENUE Channel Names as Track Names	Имена каналов пульта как имена дорожек
+Melodyne	Внешний редактор нот
+SoundFlow	Внешняя автоматизация
+Compressor/Limiter	Компрессор/лимитер
+Expander/Gate	Экспандер/гейт
+De-Esser	Де-эссер
+Maximizer	Максимайзер
+EQ 7-Band	Эквалайзер, 7 полос
+EQ 1-Band	Эквалайзер, 1 полоса
+Saturator	Сатуратор
+Bit Crusher	Понижение разрядности
+Rectifier	Выпрямитель
+Subharmonic	Субгармоники
+Mod Delay	Задержка с модуляцией
+Chorus	Хорус
+Flanger	Флэнжер
+Phaser	Фэйзер
+Ring Modulator	Кольцевой модулятор
+Pitch Shifter	Сдвиг тона
+Room Reverb	Реверберация комнаты
+Plate Reverb	Пластинчатая реверберация
+Auto Pan	Автопанорама
+Drum Synth	Синтезатор ударных
+Subtractive Synth	Субтрактивный синтезатор
+Sampler	Сэмплер
+<ALL>	<ВСЕ>
+saved	сохранено
+modified	изменено
+audio on	звук включён
+silent clock	без звука
+Hz	Гц
+16-bit	16 бит
+24-bit	24 бита
+32-bit float	32 бита float
+32-bit	32 бита
+waveform	волна
+volume	громкость
+pan	панорама
+mute	заглушение
+read	чтение
+off	выкл
+write	запись
+touch	касание
+latch	защёлка
+trim	trim
+blocks	блоки

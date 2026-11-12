@@ -33,7 +33,8 @@ pub mod spot;
 pub enum Dialog {
     NewTracks(new_tracks::NewTracks),
     NewSession { name: String, sample_rate: u32, demo: bool },
-    Bounce { path: String, format: EncodeFormat, bit_depth: String, normalize: bool, dither: bool },
+    /// `mp3`: an MP3 mixdown (192 kbit/s) instead of `format` (AI-Audition).
+    Bounce { path: String, format: EncodeFormat, bit_depth: String, normalize: bool, dither: bool, mp3: bool },
     RenameTrack { id: TrackId, name: String },
     RenameClip { id: ClipId, name: String },
     RenameMarker { id: soundcraft_model::MarkerId, name: String },
@@ -185,6 +186,7 @@ impl Dialogs {
                     bit_depth: "24".into(),
                     normalize: false,
                     dither: false,
+                    mp3: false,
                 }
             }
             "file.import_audio" => Dialog::PathPrompt { cmd: id.into(), title: "Import Audio".into(), path: home, key: "path".into() },
@@ -494,23 +496,32 @@ pub fn show(app: &mut SoundApp, ctx: &egui::Context) {
                         ));
                     }
                 }
-                Dialog::Bounce { path, format, bit_depth, normalize, dither } => {
+                Dialog::Bounce { path, format, bit_depth, normalize, dither, mp3 } => {
                     bounce_file_row(app, ui, path, format);
                     ui.horizontal(|ui| {
-                        craft_ui::ComboBox::from_label("Format").selected_text(format.container().name()).show_ui(ui, |ui| {
+                        let shown = if *mp3 { "MP3" } else { format.container().name() };
+                        craft_ui::ComboBox::from_label("Format").selected_text(shown).show_ui(ui, |ui| {
                             for &f in EncodeFormat::ALL {
-                                ui.selectable_value(format, f, f.container().name());
+                                if ui.selectable_label(!*mp3 && *format == f, f.container().name()).clicked() {
+                                    *format = f;
+                                    *mp3 = false;
+                                }
+                            }
+                            if ui.selectable_label(*mp3, "MP3").clicked() {
+                                *mp3 = true;
                             }
                         });
-                        craft_ui::ComboBox::from_label("Bit Depth").selected_text(format!("{bit_depth}-bit")).show_ui(ui, |ui| {
-                            for b in ["16", "24", "32f"] {
-                                ui.selectable_value(bit_depth, b.to_string(), format!("{b}-bit"));
-                            }
+                        ui.add_enabled_ui(!*mp3, |ui| {
+                            craft_ui::ComboBox::from_label("Bit Depth").selected_text(format!("{bit_depth}-bit")).show_ui(ui, |ui| {
+                                for b in ["16", "24", "32f"] {
+                                    ui.selectable_value(bit_depth, b.to_string(), format!("{b}-bit"));
+                                }
+                            });
                         });
                     });
                     crate::widgets::checkbox(ui, normalize, "Normalize to -0.1 dBFS");
                     // 32-bit float keeps every sample as it is: there is nothing to dither.
-                    ui.add_enabled_ui(bit_depth.as_str() != "32f", |ui| {
+                    ui.add_enabled_ui(!*mp3 && bit_depth.as_str() != "32f", |ui| {
                         crate::widgets::checkbox(ui, dither, "Dither (TPDF)")
                             .on_hover_text("Adds ±1 LSB triangular dither when writing 16- or 24-bit files. Leave it off when the master chain already dithers.");
                     });
@@ -520,10 +531,15 @@ pub fn show(app: &mut SoundApp, ctx: &egui::Context) {
                             .color(Tokens::current().text_dim),
                     );
                     if buttons(ui, "Bounce", enter) {
-                        let p = bounce_path(path, *format);
-                        bounce_params = Some(
-                            json!({"path": p.to_string_lossy(), "format": format.extension(), "bit_depth": bit_depth, "normalize": normalize, "dither": *dither && bit_depth.as_str() != "32f"}),
-                        );
+                        if *mp3 {
+                            let p = std::path::Path::new(path.as_str()).with_extension("mp3");
+                            bounce_params = Some(json!({"path": p.to_string_lossy(), "format": "mp3", "bitrate": 192, "normalize": normalize}));
+                        } else {
+                            let p = bounce_path(path, *format);
+                            bounce_params = Some(
+                                json!({"path": p.to_string_lossy(), "format": format.extension(), "bit_depth": bit_depth, "normalize": normalize, "dither": *dither && bit_depth.as_str() != "32f"}),
+                            );
+                        }
                     }
                 }
                 Dialog::RenameTrack { id, name } => {

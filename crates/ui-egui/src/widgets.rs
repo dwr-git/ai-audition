@@ -212,7 +212,8 @@ pub(crate) fn selector_box_named(ui: &mut Ui, width: f32, height: f32, text: &st
     let tr = Rect::from_min_max(pos2(r.max.x - height * 0.8, r.min.y), r.max);
     icons::draw(ui.painter(), tr.shrink(height * 0.15), "triangle_down", t.text_dim);
     let text_rect = Rect::from_min_max(r.min + vec2(3.0, 1.0), pos2(tr.left() - 2.0, r.bottom() - 1.0));
-    let mut job = egui::text::LayoutJob::simple(text.to_owned(), regular((height * 0.62).clamp(8.0, 12.0)), color, text_rect.width().max(1.0));
+    // A LayoutJob is not translated by the egui hook: the visible value goes through the table here.
+    let mut job = egui::text::LayoutJob::simple(crate::ru::word(text), regular((height * 0.62).clamp(8.0, 12.0)), color, text_rect.width().max(1.0));
     job.wrap.max_rows = 1;
     job.wrap.break_anywhere = true;
     job.wrap.overflow_character = Some('…');

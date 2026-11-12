@@ -298,6 +298,7 @@ fn download(name: &str, bytes: &[u8]) -> Result<(), String> {
         Some("txt") => "text/plain",
         Some("json" | "scraft") => "application/json",
         Some("musicxml") => "application/vnd.recordare.musicxml+xml",
+        Some("mp3") => "audio/mpeg",
         ext => ext.and_then(craft_audio::encode_format_for).map_or("application/octet-stream", craft_audio::EncodeFormat::mime_type),
     });
     let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &opts).map_err(js)?;

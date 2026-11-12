@@ -357,7 +357,37 @@ pub struct Bounce {
     gain: f32,
     peak: f32,
     meter: soundcraft_dsp::meter::LoudnessMeter,
-    enc: Option<craft_audio::FileEncoder<Out>>,
+    enc: Option<Sink>,
+}
+
+/// What a bounce writes its blocks through: a PCM/FLAC file encoder, or the MP3 encoder (AI-Audition).
+enum Sink {
+    File(Box<craft_audio::FileEncoder<Out>>),
+    Mp3(Box<craft_audio::mp3::Encoder>, Out),
+}
+
+impl Sink {
+    fn write(&mut self, block: &[Vec<f32>], n: usize) -> std::result::Result<(), String> {
+        match self {
+            Sink::File(enc) => enc.write(block, n).map_err(|e| e.to_string()),
+            Sink::Mp3(enc, out) => {
+                let planar: Vec<&[f32]> = block.iter().map(|c| c.get(..n).unwrap_or(c.as_slice())).collect();
+                let bytes = enc.encode(&planar);
+                std::io::Write::write_all(out, &bytes).map_err(|e| e.to_string())
+            }
+        }
+    }
+
+    fn finish(self) -> std::result::Result<Out, String> {
+        match self {
+            Sink::File(enc) => (*enc).finish().map_err(|e| e.to_string()),
+            Sink::Mp3(mut enc, mut out) => {
+                let tail = enc.flush();
+                std::io::Write::write_all(&mut out, &tail).map_err(|e| e.to_string())?;
+                Ok(out)
+            }
+        }
+    }
 }
 
 /// The Broadcast Wave stamp of timeline position `at`: the session's timecode start plus `at`, in
@@ -430,7 +460,50 @@ impl Bounce {
             gain: 1.0,
             peak: 0.0,
             meter,
-            enc: Some(enc),
+            enc: Some(Sink::File(Box::new(enc))),
+        })
+    }
+
+    /// Starts an MP3 bounce (constant `kbps`, mono or stereo: wider mixes are folded down to
+    /// stereo). MP3 takes 32, 44.1 or 48 kHz (or 16, 22.05, 24 kHz); other session rates are refused.
+    pub fn new_mp3(s: Arc<Session>, path: &Path, r: Range, kbps: u32, bus: Option<BusId>, normalize: bool) -> Result<Bounce> {
+        let bad = |m: String| EngineError::BadParams("file.bounce_mix".into(), m);
+        if r.len() > s.sample_rate.samples(MAX_BOUNCE_SECS) {
+            return Err(bad("bounces are limited to 4 hours".into()));
+        }
+        let (_, wide, _) = bounce_layout(&s, bus, false);
+        let (_, channels, fold) = bounce_layout(&s, bus, wide > 2);
+        let channels = channels.clamp(1, 2);
+        let rate = s.sample_rate.hz();
+        let kbps = craft_audio::mp3::nearest_bitrate(rate, kbps).ok_or_else(|| {
+            bad(format!(
+                "MP3 needs a session rate of 32, 44.1 or 48 kHz (or 16, 22.05, 24 kHz); this session runs at {rate} Hz: bounce WAV or FLAC instead"
+            ))
+        })?;
+        let enc = craft_audio::mp3::Encoder::new(craft_audio::mp3::Config::cbr(rate, channels, kbps)).map_err(|e| bad(e.to_string()))?;
+        let name = path.file_name().map_or_else(|| "bounce".into(), |n| n.to_string_lossy().into_owned());
+        let part = path.with_file_name(format!("{name}.part"));
+        crate::file_access::check_write(path).map_err(EngineError::Io)?;
+        crate::file_access::check_write(&part).map_err(EngineError::Io)?;
+        let out = Out::create(&part).map_err(|err| EngineError::Io(format!("{}: {err}", path.display())))?;
+        let render = soundcraft_mix::RangeRender::new(&s, bus, r, 1024);
+        let meter = soundcraft_dsp::meter::LoudnessMeter::new(s.sample_rate.as_f64() as f32, channels);
+        Ok(Bounce {
+            session: s,
+            path: path.to_path_buf(),
+            part,
+            range: r,
+            bus,
+            fold,
+            normalize,
+            measuring: normalize,
+            render,
+            block: Vec::new(),
+            done: 0,
+            gain: 1.0,
+            peak: 0.0,
+            meter,
+            enc: Some(Sink::Mp3(Box::new(enc), out)),
         })
     }
 

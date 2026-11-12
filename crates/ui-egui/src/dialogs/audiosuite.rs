@@ -12,7 +12,8 @@ pub(super) fn audiosuite_window(app: &mut SoundApp, ctx: &egui::Context) {
     let Some(process) = app.ui.audiosuite.clone() else { return };
     let mut open = true;
     let title = soundcraft_dsp::plugin_info(&process).map_or_else(|| process.replace('_', " "), |p| p.name.to_string());
-    egui::Window::new(format!("AudioSuite · {title}")).open(&mut open).default_width(360.0).show(ctx, |ui| {
+    let heading = format!("{} · {}", crate::ru::word("AudioSuite"), crate::ru::word(&title));
+    egui::Window::new(heading).open(&mut open).default_width(360.0).show(ctx, |ui| {
         let key = egui::Id::unique(("as_params", process.clone()));
         let mut params: std::collections::BTreeMap<String, f32> = ui.ctx().memory(|m| m.data.get_temp(key)).unwrap_or_default();
         if let Some(info) = soundcraft_dsp::plugin_info(&process) {

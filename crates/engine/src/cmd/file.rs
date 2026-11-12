@@ -89,7 +89,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 crate::io::import_video_bytes(e, &path, bytes, at)
             }
         ),
-        cmd!(noundo "file.bounce_mix", "Bounce Mix...", ["File"], Some("Cmd+Alt+B"), "{path, format?: wav|aiff|flac, bit_depth?: 16|24|32f, start?, end?, source?: main|bus name, normalize?: false, dither?: true, fold_down?: stereo}", always, bounce),
+        cmd!(noundo "file.bounce_mix", "Bounce Mix...", ["File"], Some("Cmd+Alt+B"), "{path, format?: wav|aiff|flac|mp3, bitrate?: 32..320 (mp3 kbit/s, default 192), bit_depth?: 16|24|32f, start?, end?, source?: main|bus name, normalize?: false, dither?: true, fold_down?: stereo}", always, bounce),
         cmd!(noundo "file.bounce_stems", "Bounce Stems...", [], None, "{dir, format?: wav|aiff|flac, bit_depth?: 16|24|32f, start?, end?, dither?: true, fold_down?: stereo}", has_tracks, |e, p| {
             let dir = str_param(p, "dir").ok_or_else(|| bad("file.bounce_stems", "`dir` required"))?.to_string();
             let r = range_param(e, "file.bounce_stems", p)?;
@@ -318,6 +318,13 @@ pub fn bounce_job(e: &Engine, p: &Value) -> Result<crate::io::Bounce> {
     let r = if r.is_empty() { soundcraft_time::Range::new(0, e.session().content_end().max(1)) } else { r };
     let ext = std::path::Path::new(&path).extension().and_then(std::ffi::OsStr::to_str).unwrap_or("wav").to_ascii_lowercase();
     let format_name = str_param(p, "format").unwrap_or(ext.as_str());
+    let bus = bounce_bus(e, p)?;
+    // AI-Audition: MP3 mixdowns (constant bit rate, `bitrate` kbit/s, default 192).
+    if format_name.eq_ignore_ascii_case("mp3") {
+        let kbps = p.get("bitrate").and_then(Value::as_u64).map_or(192, |b| u32::try_from(b.clamp(8, 320)).unwrap_or(192));
+        let path = if ext == "mp3" { path } else { std::path::Path::new(&path).with_extension("mp3").to_string_lossy().into_owned() };
+        return crate::io::Bounce::new_mp3(e.session_arc(), std::path::Path::new(&path), r, kbps, bus, bool_or(p, "normalize", false));
+    }
     let format = craft_audio::encode_format_for(format_name).ok_or_else(|| {
         let supported = craft_audio::ENCODE_EXTENSIONS.join(", ");
         bad("file.bounce_mix", format!("cannot write `{format_name}` files (supported: {supported})"))
@@ -330,7 +337,6 @@ pub fn bounce_job(e: &Engine, p: &Value) -> Result<crate::io::Bounce> {
     let opts = craft_audio::EncodeOptions::new(format).with_bit_depth(bit_depth).with_dither(bool_or(p, "dither", true));
     let normalize = bool_or(p, "normalize", false);
     let fold = fold_down_param(p, "file.bounce_mix")?;
-    let bus = bounce_bus(e, p)?;
     crate::io::Bounce::new(e.session_arc(), std::path::Path::new(&path), r, &opts, bus, normalize, fold)
 }
 

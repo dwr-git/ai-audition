@@ -1389,6 +1389,7 @@
       ['Сохранить на сервер', 'Ctrl+S, в «Мои проекты»', async () => { await Files.save(false); return 'skip'; }],
       ['Сохранить как…', 'Под другим именем', async () => { await Files.save(true); return 'skip'; }],
       ['Скачать сведение WAV', '16 бит, весь проект', async () => { const d = await session(); await PC.exec('file.bounce_mix', { path: engineName(d.name).replace(/\.scraftz$/, '.wav'), format: 'wav', bit_depth: 16 }); return 'Сведение готово — смотрите загрузки браузера.'; }],
+      ['Скачать сведение MP3', '192 кбит/с, для публикации подкаста', async () => { const d = await session(); await PC.exec('file.bounce_mix', { path: engineName(d.name).replace(/\.scraftz$/, '.mp3'), format: 'mp3', bitrate: 192 }); return 'Сведение готово — смотрите загрузки браузера.'; }],
       ['Скачать сведение FLAC', 'Без потерь, 24 бита', async () => { const d = await session(); await PC.exec('file.bounce_mix', { path: engineName(d.name).replace(/\.scraftz$/, '.flac'), format: 'flac', bit_depth: 24 }); return 'Сведение готово — смотрите загрузки браузера.'; }],
       ['Новый проект', 'Пустой', async () => { if (await newProject()) Files.forget(); return 'skip'; }],
     ]],
