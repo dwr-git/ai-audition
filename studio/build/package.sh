@@ -34,8 +34,9 @@ rm -f "$APP/HOSTING.md"
 mkdir -p "$APP/studio"
 cp "$ROOT/studio/web/studio.js" "$ROOT/studio/web/studio.css" "$ROOT/studio/web/config.js" "$ROOT/studio/web/loader.js" "$APP/studio/"
 cp "$ROOT/studio/web/.htaccess" "$APP/studio/"
-# AI Звук's own icon (Dewiar, `sound`): a waveform on a green-blue tile.
-cp "$ROOT/studio/web/favicon.png" "$ROOT/studio/web/apple-touch-icon.png" "$APP/"
+# The browser-tab icon is the owner's Dewiar favicon, shared by all the AI apps; the home-screen icon
+# (apple-touch-icon) is AI Звук's own (Dewiar, `sound`): a waveform on a green-blue tile.
+cp "$ROOT/studio/web/favicon.png" "$ROOT/studio/web/favicon.ico" "$ROOT/studio/web/apple-touch-icon.png" "$APP/"
 python3 "$ROOT/studio/build/make_labels.py" "$APP/studio/ru-labels.json"
 
 # No fonts folder: AI Звук draws only its interface and names (track, clip and marker names),

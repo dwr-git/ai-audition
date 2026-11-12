@@ -7,8 +7,8 @@ license. `cargo xtask assets` fails CI when a tracked asset file has no row.
 Assets must be original, public domain (CC0) or permissively licensed. See `AGENTS.md`.
 
 AI Звук (this fork) carries none of the ArtCraft marks: `docs/brand/` was removed, as its licence
-requires of modified versions. Its page icon (`studio/web/favicon.png`, `apple-touch-icon.png`: the
-«AI Звук» icon by Dewiar, a waveform on a green-blue tile) is listed under Files below.
+requires of modified versions. Its browser-tab icon (`studio/web/favicon.png`, `favicon.ico`) is the owner's Dewiar
+favicon shared by the AI apps; its home-screen icon (`apple-touch-icon.png`) is the «AI Звук» icon by Dewiar. Both are listed under Files below.
 
 ## Icons
 
@@ -43,7 +43,8 @@ here. The subset uses default_fonts; the parent face uses monochrome_emoji_fonts
 
 | Path | Author | Source | License |
 |---|---|---|---|
-| `studio/web/favicon.png`, `studio/web/apple-touch-icon.png` | Dewiar | original work made for the AI apps (icon `sound`, rendered from its SVG and resized) | MIT OR Apache-2.0 |
+| `studio/web/favicon.png`, `studio/web/favicon.ico` | Dewiar | Dewiar favicon — owner's own artwork, provided by the project owner for use in these apps | provided by the project owner |
+| `studio/web/apple-touch-icon.png` | Dewiar | original work made for the AI apps (icon `sound`, rendered from its SVG and resized) | MIT OR Apache-2.0 |
 | `assets/app-icon/icon.svg` | SoundCraft contributors | original (hand-placed SVG paths; placeholder app icon) | MIT OR Apache-2.0 |
 | `packaging/macos/dmg/` (all files) | @XusBadia | original (macOS DMG window background and layout, from the app icon; see `packaging/macos/dmg/README.md`) | MIT OR Apache-2.0 |
 | `assets/app-icon/soundcraft-1024.png` | SoundCraft contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |
