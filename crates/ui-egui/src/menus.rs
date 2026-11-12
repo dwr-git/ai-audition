@@ -338,7 +338,7 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
                     crate::ru::word(if app.ui.window == MainWindow::Edit || app.ui.mix_separate { "Edit" } else { "Mix" })
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Web (AI-Audition): the house back to the site at the right end, the AI chip by it.
+                    // Web (AI Звук): the house back to the site at the right end, the AI chip by it.
                     web_buttons(app, ui);
                     ui.label(egui::RichText::new(title).color(t.text_dim));
                 });
@@ -347,7 +347,7 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
     );
 }
 
-/// Web (AI-Audition): at the right end of the menu bar, a house (back to the site,
+/// Web (AI Звук): at the right end of the menu bar, a house (back to the site,
 /// [`crate::Services::go_home`]) and the AI chip (the page's AI menu for names, comments and
 /// markers, [`crate::Services::ai_assist`]). Nothing when the host gives neither. Drawn in code.
 fn web_buttons(app: &mut SoundApp, ui: &mut egui::Ui) {

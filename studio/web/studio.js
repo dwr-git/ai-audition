@@ -1,4 +1,4 @@
-/* AI-Audition — помощник и файлы на сервере внутри звукового редактора.
+/* AI Звук — помощник и файлы на сервере внутри звукового редактора.
  *
  * Панель в браузере разговаривает с моделью через api/assistant.php, а действия
  * выполняет в самом редакторе через window.aiaudition (apps/soundcraft-web/src/web/bridge.rs):
@@ -535,7 +535,7 @@
   function showEmpty() {
     log.innerHTML = `<div class="st-empty">
       <h3>Чем помочь?</h3>
-      <p>Спросите, где найти функцию в AI-Audition, или попросите обработать запись за вас: убрать паузы, выровнять громкость, поставить эффекты и маркеры.</p>
+      <p>Спросите, где найти функцию в AI Звук, или попросите обработать запись за вас: убрать паузы, выровнять громкость, поставить эффекты и маркеры.</p>
       <button class="st-mini primary st-start-tpl">Быстрые задачи</button>
       <div class="st-chips">
         <button class="st-chip" data-act="1">Подготовь голосовую дорожку к подкасту: срез низов, компрессор, де-эссер и лимитер на мастере</button>
@@ -780,7 +780,7 @@
     try {
       r = await post(payload);
     } catch (e) {
-      console.warn('AI-Audition: запрос к помощнику оборвался', e);
+      console.warn('AI Звук: запрос к помощнику оборвался', e);
       if (!hasImages(payload)) throw new Error(await explainNoAnswer(took()));
       try { r = await post(withoutImages(payload)); } catch { throw new Error(await explainNoAnswer(took())); }
       tellImagesBlocked();
@@ -1788,7 +1788,7 @@
           if (typeof id === 'string') applyPanelTheme(id === 'brand' ? 'brand' : id);
           // Заголовок вкладки браузера — имя проекта (окно браузера редактор сам не переименует).
           const d = await session().catch(() => null);
-          document.title = d && d.name ? `${d.name}${d.dirty ? ' •' : ''} — AI-Audition` : 'AI-Audition';
+          document.title = d && d.name ? `${d.name}${d.dirty ? ' •' : ''} — AI Звук` : 'AI Звук';
         } catch { /* не важно */ }
       }
       await sleep(2000);

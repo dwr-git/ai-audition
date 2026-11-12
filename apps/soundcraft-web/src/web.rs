@@ -16,7 +16,7 @@ const LOADING_ID: &str = "soundcraft_loading";
 
 pub fn start() {
     eframe::WebLogger::init(log::LevelFilter::Info).ok();
-    // AI-Audition: the interface in Russian, saved projects to the page (the user's projects on
+    // AI Звук: the interface in Russian, saved projects to the page (the user's projects on
     // the server), exports as downloads, and the page's assistant panel (`window.aiaudition`).
     soundcraft_ui_egui::ru::install();
     io::set_deliver(deliver);
@@ -46,7 +46,7 @@ pub fn start() {
                     if let Some(rs) = &cc.wgpu_render_state {
                         log::info!("soundcraft-web: wgpu backend {:?}", rs.adapter.get_info().backend);
                     }
-                    // AI-Audition starts on an empty project; `?demo` opens the synthesised demo song.
+                    // AI Звук starts on an empty project; `?demo` opens the synthesised demo song.
                     let engine = if query().contains("demo") {
                         soundcraft_engine::demo::demo_engine()
                     } else {
@@ -77,7 +77,7 @@ pub fn start() {
             match result {
                 Ok(()) => el.remove(),
                 Err(e) => el.set_inner_html(&format!(
-                    "<p>AI-Audition не запустился: {}</p><p>Нужен браузер с WebGPU или WebGL2: свежий Chrome, Edge, Firefox или Safari. Обновите страницу.</p>",
+                    "<p>AI Звук не запустился: {}</p><p>Нужен браузер с WebGPU или WebGL2: свежий Chrome, Edge, Firefox или Safari. Обновите страницу.</p>",
                     html_escape(&format!("{e:?}"))
                 )),
             }
@@ -125,7 +125,7 @@ impl Purpose {
 
     fn filter(self) -> (&'static str, Vec<&'static str>) {
         match self {
-            Self::Session => ("Проект AI-Audition", SESSION_EXTS.to_vec()),
+            Self::Session => ("Проект AI Звук", SESSION_EXTS.to_vec()),
             Self::Audio => ("Звук", craft_audio::DECODE_EXTENSIONS.to_vec()),
             Self::Midi => ("MIDI", MIDI_EXTS.to_vec()),
         }

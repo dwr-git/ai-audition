@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Russian names for the assistant's command search.
 
-Reads the Russian interface table AI-Audition is built with (crates/ui-egui/src/ru.tsv: English, a
+Reads the Russian interface table AI Звук is built with (crates/ui-egui/src/ru.tsv: English, a
 tab, Russian; `#` starts a comment) and writes studio/ru-labels.json:
 
     {"text": {"Bounce Mix": "Свести микс", ...}}

@@ -26,6 +26,7 @@ pub(super) fn about(app: &mut SoundApp, ctx: &egui::Context) {
                 ui.label(format!("Версия {}", env!("CARGO_PKG_VERSION")));
                 ui.label("Звуковой редактор в браузере: запись, монтаж, сведение и помощник с ИИ.");
                 ui.label("Основан на SoundCraft от команды ArtCraft (github.com/storytold/soundcraft).");
+                ui.label("Audition — товарный знак Adobe. AI Звук не связан с Adobe и работает с обычными звуковыми форматами (WAV, MP3, FLAC…).");
                 ui.label("Лицензия MIT OR Apache-2.0. Написан на Rust и egui.");
             }
         }

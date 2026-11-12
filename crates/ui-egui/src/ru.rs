@@ -1,4 +1,4 @@
-//! AI-Audition: the interface in Russian.
+//! AI Звук: the interface in Russian.
 //!
 //! SoundCraft's interface strings are English literals with no catalogue, so the browser build
 //! translates them where egui lays text out: [`install`] hands [`translate`] to egui's text

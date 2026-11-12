@@ -1,6 +1,6 @@
 //! Design tokens. Colours were chosen by eye to give a dark, studio-style look; they are ours.
 //!
-//! AI-Audition: Light and Dark are our neumorphic palettes (NeuLight, NeuDark), and the Brand
+//! AI Звук: Light and Dark are our neumorphic palettes (NeuLight, NeuDark), and the Brand
 //! theme (navy chrome, the brand's blue-violet accent, solid black menus and windows with a
 //! strong shadow, the brand backdrop behind the tracks) is the browser build's default.
 
@@ -104,7 +104,7 @@ pub enum ThemeMode {
     Light,
     #[default]
     Dark,
-    /// AI-Audition's Brand theme (the browser build starts in it).
+    /// AI Звук's Brand theme (the browser build starts in it).
     Brand,
 }
 

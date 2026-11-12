@@ -319,7 +319,7 @@ pub fn bounce_job(e: &Engine, p: &Value) -> Result<crate::io::Bounce> {
     let ext = std::path::Path::new(&path).extension().and_then(std::ffi::OsStr::to_str).unwrap_or("wav").to_ascii_lowercase();
     let format_name = str_param(p, "format").unwrap_or(ext.as_str());
     let bus = bounce_bus(e, p)?;
-    // AI-Audition: MP3 mixdowns (constant bit rate, `bitrate` kbit/s, default 192).
+    // AI Звук: MP3 mixdowns (constant bit rate, `bitrate` kbit/s, default 192).
     if format_name.eq_ignore_ascii_case("mp3") {
         let kbps = p.get("bitrate").and_then(Value::as_u64).map_or(192, |b| u32::try_from(b.clamp(8, 320)).unwrap_or(192));
         let path = if ext == "mp3" { path } else { std::path::Path::new(&path).with_extension("mp3").to_string_lossy().into_owned() };

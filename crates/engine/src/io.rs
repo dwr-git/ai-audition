@@ -360,7 +360,7 @@ pub struct Bounce {
     enc: Option<Sink>,
 }
 
-/// What a bounce writes its blocks through: a PCM/FLAC file encoder, or the MP3 encoder (AI-Audition).
+/// What a bounce writes its blocks through: a PCM/FLAC file encoder, or the MP3 encoder (AI Звук).
 enum Sink {
     File(Box<craft_audio::FileEncoder<Out>>),
     Mp3(Box<craft_audio::mp3::Encoder>, Out),

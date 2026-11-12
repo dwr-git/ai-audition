@@ -1,4 +1,4 @@
-# AI-Audition: English interface strings → Russian (crates/ui-egui/src/ru.rs). One pair per line, a tab between.
+# AI Звук: English interface strings → Russian (crates/ui-egui/src/ru.rs). One pair per line, a tab between.
 # A row also covers the same string followed by "...", "…" or ":". Plugin and format names stay as they are.
 % of all commits	% всех коммитов
 + Marker	+ Маркер
@@ -7,8 +7,8 @@ A bounce is already running	Сведение уже идёт
 AFL (After Fader Listen)	AFL (прослушивание после фейдера)
 ARA Plugins	Плагины ARA
 About	О программе
-About SoundCraft	О программе AI-Audition
-About AI-Audition	О программе AI-Audition
+About SoundCraft	О программе AI Звук
+About AI Звук	О программе AI Звук
 Activate HEAT	Включить HEAT
 Add	Добавить
 Add Automation Breakpoint	Добавить точку автоматизации
@@ -812,9 +812,9 @@ Solo Mode	Режим соло
 Solo Safe	Защита от соло
 Some	Некоторые
 Sort	Сортировка
-SoundCraft	AI-Audition
-SoundCraft Preferences	Настройки AI-Audition
-SoundCraft hit an internal error (see the log). Restart SoundCraft to be safe.	Во внутренней ошибке AI-Audition (подробности в журнале). Для надёжности обновите страницу.
+SoundCraft	AI Звук
+SoundCraft Preferences	Настройки AI Звук
+SoundCraft hit an internal error (see the log). Restart SoundCraft to be safe.	В AI Звук произошла внутренняя ошибка (подробности в журнале). Для надёжности обновите страницу.
 Space	Пробел
 Space Clips…	Расставить клипы…
 Space Clips	Расставить клипы

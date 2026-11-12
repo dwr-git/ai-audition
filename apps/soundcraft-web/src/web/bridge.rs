@@ -1,7 +1,7 @@
 //! `window.aiaudition`: the control channel for the page, as promises.
 //!
 //! The same JSON methods as the desktop control channel (`crates/ui-egui/src/control.rs`), so the
-//! assistant panel next to the editor (`studio/`) drives AI-Audition with the commands the CLI and
+//! assistant panel next to the editor (`studio/`) drives AI Звук with the commands the CLI and
 //! the MCP server use:
 //!
 //! ```js
@@ -20,7 +20,7 @@
 //! `aiaudition:dirty` (`detail: {dirty}`). The AI chip in the menu bar asks for the page's AI menu
 //! with `aiaudition:ai` (`detail: {x, y}`, CSS pixels from the canvas's top left).
 //!
-//! There is no `addFont`: AI-Audition draws only interface text and names, which its built-in
+//! There is no `addFont`: AI Звук draws only interface text and names, which its built-in
 //! fonts cover (Latin and Cyrillic).
 
 use std::cell::RefCell;
@@ -114,10 +114,10 @@ fn request(method: &str, params: Value) -> js_sys::Promise {
         match sent {
             Some(true) => WAITING.with(|w| w.borrow_mut().push((rx, resolve, reject))),
             Some(false) => {
-                let _ = reject.call1(&JsValue::NULL, &error("AI-Audition has closed"));
+                let _ = reject.call1(&JsValue::NULL, &error("AI Звук has closed"));
             }
             None => {
-                let _ = reject.call1(&JsValue::NULL, &error("AI-Audition is not running yet"));
+                let _ = reject.call1(&JsValue::NULL, &error("AI Звук is not running yet"));
             }
         }
     });
@@ -154,7 +154,7 @@ fn open(name: String, bytes: JsValue) -> Result<(), JsValue> {
     let name = clean_name(&name, "Проект.scraftz");
     LINK.with(|l| {
         let link = l.borrow();
-        let link = link.as_ref().ok_or_else(|| error("AI-Audition is not running yet"))?;
+        let link = link.as_ref().ok_or_else(|| error("AI Звук is not running yet"))?;
         link.inbox.borrow_mut().push((Purpose::of(&name), name, bytes));
         link.ctx.request_repaint();
         Ok(())
@@ -245,7 +245,7 @@ pub fn install() -> Result<(), JsValue> {
         Closure::<dyn Fn() -> bool>::new(|| LINK.with(|l| l.borrow().as_ref().is_some_and(|link| link.ctx.text_edit_focused()))).into_js_value(),
     )?;
     set(&obj, "takesSaves", JsValue::FALSE)?;
-    set(&obj, "product", JsValue::from_str("AI-Audition"))?;
+    set(&obj, "product", JsValue::from_str("AI Звук"))?;
     let w = web_sys::window().ok_or("no window")?;
     js_sys::Reflect::set(&w, &"aiaudition".into(), &obj)?;
     let tick = Closure::<dyn Fn()>::new(poll_replies).into_js_value();

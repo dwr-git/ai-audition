@@ -14,7 +14,7 @@ pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
 };
 
 /// The product name a person reads (window titles, About).
-pub const PRODUCT_NAME: &str = "AI-Audition";
+pub const PRODUCT_NAME: &str = "AI Звук";
 
 pub mod appearance;
 pub mod bounce;

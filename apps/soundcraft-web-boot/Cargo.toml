@@ -1,6 +1,6 @@
 [package]
 name = "soundcraft-web-boot"
-description = "Starts AI-Audition in the browser from compressed parts of its WebAssembly"
+description = "Starts AI Звук in the browser from compressed parts of its WebAssembly"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

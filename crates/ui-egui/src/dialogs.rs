@@ -33,7 +33,7 @@ pub mod spot;
 pub enum Dialog {
     NewTracks(new_tracks::NewTracks),
     NewSession { name: String, sample_rate: u32, demo: bool },
-    /// `mp3`: an MP3 mixdown (192 kbit/s) instead of `format` (AI-Audition).
+    /// `mp3`: an MP3 mixdown (192 kbit/s) instead of `format` (AI Звук).
     Bounce { path: String, format: EncodeFormat, bit_depth: String, normalize: bool, dither: bool, mp3: bool },
     RenameTrack { id: TrackId, name: String },
     RenameClip { id: ClipId, name: String },

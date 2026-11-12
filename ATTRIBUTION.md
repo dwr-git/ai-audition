@@ -6,9 +6,9 @@ license. `cargo xtask assets` fails CI when a tracked asset file has no row.
 **Rule:** no Avid, Pro Tools, Adobe or other proprietary icons, images, sounds or presets — ever.
 Assets must be original, public domain (CC0) or permissively licensed. See `AGENTS.md`.
 
-AI-Audition (this fork) carries none of the ArtCraft marks: `docs/brand/` was removed, as its licence
-requires of modified versions. Its page icon (`studio/web/favicon.png`, `apple-touch-icon.png`: a
-waveform in the frame the other AI- apps share) is listed under Files below.
+AI Звук (this fork) carries none of the ArtCraft marks: `docs/brand/` was removed, as its licence
+requires of modified versions. Its page icon (`studio/web/favicon.png`, `apple-touch-icon.png`: the
+«AI Звук» icon by Dewiar, a waveform on a green-blue tile) is listed under Files below.
 
 ## Icons
 
@@ -43,7 +43,7 @@ here. The subset uses default_fonts; the parent face uses monochrome_emoji_fonts
 
 | Path | Author | Source | License |
 |---|---|---|---|
-| `studio/web/favicon.png`, `studio/web/apple-touch-icon.png` | AI-Audition contributors | drawn for AI-Audition (Pillow, original shapes) | MIT OR Apache-2.0 |
+| `studio/web/favicon.png`, `studio/web/apple-touch-icon.png` | Dewiar | original work made for the AI apps (icon `sound`, rendered from its SVG and resized) | MIT OR Apache-2.0 |
 | `assets/app-icon/icon.svg` | SoundCraft contributors | original (hand-placed SVG paths; placeholder app icon) | MIT OR Apache-2.0 |
 | `packaging/macos/dmg/` (all files) | @XusBadia | original (macOS DMG window background and layout, from the app icon; see `packaging/macos/dmg/README.md`) | MIT OR Apache-2.0 |
 | `assets/app-icon/soundcraft-1024.png` | SoundCraft contributors | original, rendered from `icon.svg` | MIT OR Apache-2.0 |

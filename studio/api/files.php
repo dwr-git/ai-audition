@@ -1,5 +1,5 @@
 <?php
-// studio/api/files.php — «Мои проекты» AI-Audition на вашем сервере. У каждого пользователя своя папка.
+// studio/api/files.php — «Мои проекты» AI Звук на вашем сервере. У каждого пользователя своя папка.
 //
 //   GET  files.php                          → {ok, user, files: [{name, size, modified}], limit}
 //   GET  files.php?action=load&name=…       → сам файл (проект .scraftz/.scraft, звук, MIDI), application/octet-stream
