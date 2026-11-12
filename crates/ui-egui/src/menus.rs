@@ -335,7 +335,7 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
                     "{}{}  —  {}",
                     app.engine.session().name,
                     if app.engine.is_dirty() { " *" } else { "" },
-                    if app.ui.window == MainWindow::Edit || app.ui.mix_separate { "Edit" } else { "Mix" }
+                    crate::ru::word(if app.ui.window == MainWindow::Edit || app.ui.mix_separate { "Edit" } else { "Mix" })
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Web (AI-Audition): the house back to the site at the right end, the AI chip by it.

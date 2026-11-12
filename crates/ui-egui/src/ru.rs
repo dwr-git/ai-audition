@@ -33,9 +33,21 @@ fn table() -> &'static HashMap<&'static str, &'static str> {
     })
 }
 
+static INSTALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// Install the translator (once, at start-up of the browser build).
 pub fn install() {
+    INSTALLED.store(true, std::sync::atomic::Ordering::Relaxed);
     egui::set_text_translator(translate);
+}
+
+/// `text` in the interface language: its Russian once [`install`] ran, else unchanged. For a word
+/// that becomes part of a longer, formatted string (which the hook can't match whole).
+pub fn word(text: &str) -> String {
+    if INSTALLED.load(std::sync::atomic::Ordering::Relaxed) {
+        return translate(text).unwrap_or_else(|| text.to_string());
+    }
+    text.to_string()
 }
 
 /// The Russian for an interface string, or `None` to keep it.
