@@ -22,12 +22,11 @@ pub(super) fn about(app: &mut SoundApp, ctx: &egui::Context) {
             1 => crate::credits::contributors_ui(ui),
             2 => crate::credits::models_ui(ui),
             _ => {
-                ui.label(egui::RichText::new("SoundCraft").font(bold(22.0)));
-                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-                ui.label("An open-source digital audio workstation from the ArtCraft team.");
-                ui.label("Dual-licensed MIT OR Apache-2.0. Made with Rust and egui.");
-                ui.hyperlink_to("getartcraft.com/apps/soundcraft", "https://getartcraft.com/apps/soundcraft");
-                ui.hyperlink_to("Join us on Discord", "https://discord.gg/artcraft");
+                ui.label(egui::RichText::new(crate::PRODUCT_NAME).font(bold(22.0)));
+                ui.label(format!("Версия {}", env!("CARGO_PKG_VERSION")));
+                ui.label("Звуковой редактор в браузере: запись, монтаж, сведение и помощник с ИИ.");
+                ui.label("Основан на SoundCraft от команды ArtCraft (github.com/storytold/soundcraft).");
+                ui.label("Лицензия MIT OR Apache-2.0. Написан на Rust и egui.");
             }
         }
     });

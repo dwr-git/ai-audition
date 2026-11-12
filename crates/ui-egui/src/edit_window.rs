@@ -147,7 +147,7 @@ fn main_area_content(app: &mut SoundApp, ui: &mut Ui) {
     let rulers_rect = Rect::from_min_max(pos2(full.min.x, full.min.y), pos2(full.max.x, full.min.y + rulers_h));
     app.edit_layout.timeline = [tl.min.x, tl.min.y, tl.max.x, tl.max.y];
     follow_zoom_toggle(app);
-    ui.painter().rect_filled(full, 0.0, t.window_bg);
+    crate::theme::paint_canvas_fill(ui.painter(), full, t.window_bg);
     scroll_and_zoom(app, ui, full, tl);
     draw_rulers(app, ui, rulers_rect, tl, &rulers);
     views_button(app, ui, rulers_rect);

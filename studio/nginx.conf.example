@@ -1,0 +1,44 @@
+# AI-Audition — что нужно nginx.
+#
+# Папку можно назвать как угодно (ai-audition, audio, …) и переименовывать когда угодно:
+# все пути внутри неё относительные, а правила ниже не привязаны к имени папки.
+# Приложение целиком берётся из этой папки: интернет и сторонние сайты не нужны.
+#
+# Вставьте эти блоки внутрь вашего server { ... }. Если такие блоки уже добавлены для
+# AI-Photoshop — второй раз не нужно: правила общие для всех папок с api/assistant.php.
+#
+# Обычной раздачи статики (включая include mime.types; в блоке http — он есть в стандартном
+# nginx.conf) достаточно, чтобы редактор открылся. Две настройки ниже нужны помощнику.
+
+# 1. ОБЯЗАТЕЛЬНО для помощника: он отправляет снимок экрана (больше стандартного 1 МБ),
+#    а модель думает дольше стандартных 60 секунд.
+location ~ /api/assistant\.php$ {
+    client_max_body_size 20m;
+    fastcgi_read_timeout 200s;
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_pass php:9000;   # ← как в вашем общем блоке PHP
+}
+
+# 2. ОБЯЗАТЕЛЬНО для «Моих проектов»: проект сохраняется одним файлом вместе со всем звуком, а записи
+#    бывают большими. client_max_body_size должен быть не меньше AI_AUDITION_MAX_MB (по умолчанию 200 МБ),
+#    а в PHP — post_max_size и upload_max_filesize не меньше того же (например, 210M).
+location ~ /api/files\.php$ {
+    client_max_body_size 210m;
+    fastcgi_read_timeout 300s;
+    include fastcgi_params;
+    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    fastcgi_pass php:9000;   # ← как в вашем общем блоке PHP
+}
+
+# 3. Внутренние файлы помощника не нужны снаружи.
+location ~ /api/(settings|tools)\.php$ {
+    deny all;
+}
+
+# 4. Где лежат файлы пользователей. По умолчанию — /app/storage/ai-audition (рядом с корнем сайта,
+#    снаружи его не видно; папка создаётся сама). Если PHP не может туда писать, файлы ложатся в ai-audition-data рядом
+#    с папкой приложения — тогда закройте её (имена файлов там случайные, но лучше закрыть):
+location ~ /ai-audition-data/ {
+    deny all;
+}

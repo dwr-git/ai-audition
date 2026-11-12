@@ -13,6 +13,9 @@ pub const UPDATE_APP: craft_update::app::App = craft_update::app::App {
     ..craft_update::suite::SOUNDCRAFT
 };
 
+/// The product name a person reads (window titles, About).
+pub const PRODUCT_NAME: &str = "AI-Audition";
+
 pub mod appearance;
 pub mod bounce;
 pub mod control;
@@ -28,6 +31,7 @@ pub mod mix_window;
 pub mod palette;
 pub mod panels;
 pub mod preferences;
+pub mod ru;
 pub mod shortcuts;
 pub mod theme;
 pub mod toolbar;
@@ -398,7 +402,7 @@ pub struct SoundApp {
     /// Whether the system fonts are loaded next to the bundled ones; set before the first frame.
     system_fonts: bool,
     /// The palette last applied to the context (light?), so visuals are set only on a change.
-    theme_applied: Option<bool>,
+    theme_applied: Option<theme::Palette>,
     /// Last panel host context, used to cancel renderer-owned gestures on explicit replacement.
     pub(crate) docking_context: Option<egui::Context>,
     /// Transport simulation when there is no player (tests, offscreen renders).

@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
+# AI-Audition: egui with the interface translator hook (vendor/egui/Cargo.toml).
+exclude = ["vendor"]
 default-members = ["crates/*", "apps/*", "xtask"]
 
 [workspace.package]
@@ -25,6 +27,9 @@ soundcraft-engine = { path = "crates/engine" }
 soundcraft-playback = { path = "crates/playback" }
 soundcraft-automation = { path = "crates/automation" }
 soundcraft-ui-egui = { path = "crates/ui-egui" }
+
+# The browser boot module (apps/soundcraft-web-boot) inflates the app's parts where the browser can't.
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 
 # foundation
 thiserror = "2"
@@ -102,13 +107,25 @@ lto = "thin"
 codegen-units = 16
 debug = 0
 
+# The browser build (apps/soundcraft-web, AI-Audition): small and fast to download.
+[profile.web-release]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+debug = false
+strip = true
+panic = "abort"
+
 # Keep the complete egui family and native event bridge on reviewed fork commits.
 [patch.crates-io]
 ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+# AI-Audition: egui itself is vendored with one addition, the interface translator hook
+# (vendor/egui/Cargo.toml); the rest of the egui family stays on the fork.
+egui = { path = "vendor/egui" }
 egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_glow = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
@@ -119,3 +136,8 @@ eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc79968157
 egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
+
+# The fork's own crates (eframe, egui-winit, egui-wgpu…) reach egui inside the fork's workspace:
+# point them at the vendored copy too, so there is one egui.
+[patch."https://github.com/storytold/egui.git"]
+egui = { path = "vendor/egui" }

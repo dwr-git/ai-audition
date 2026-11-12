@@ -9,12 +9,20 @@ use std::rc::Rc;
 use std::sync::Arc;
 use wasm_bindgen::JsCast as _;
 
+mod bridge;
+
 const CANVAS_ID: &str = "soundcraft_canvas";
 const LOADING_ID: &str = "soundcraft_loading";
 
 pub fn start() {
     eframe::WebLogger::init(log::LevelFilter::Info).ok();
-    io::set_deliver(download);
+    // AI-Audition: the interface in Russian, saved projects to the page (the user's projects on
+    // the server), exports as downloads, and the page's assistant panel (`window.aiaudition`).
+    soundcraft_ui_egui::ru::install();
+    io::set_deliver(deliver);
+    if let Err(e) = bridge::install() {
+        log::error!("couldn't install window.aiaudition: {e:?}");
+    }
     wasm_bindgen_futures::spawn_local(async {
         let Some(document) = web_sys::window().and_then(|w| w.document()) else {
             log::error!("no document");
@@ -38,17 +46,40 @@ pub fn start() {
                     if let Some(rs) = &cc.wgpu_render_state {
                         log::info!("soundcraft-web: wgpu backend {:?}", rs.adapter.get_info().backend);
                     }
-                    let engine = if query().contains("empty") { Engine::default() } else { soundcraft_engine::demo::demo_engine() };
+                    // AI-Audition starts on an empty project; `?demo` opens the synthesised demo song.
+                    let engine = if query().contains("demo") {
+                        soundcraft_engine::demo::demo_engine()
+                    } else {
+                        let mut e = Engine::default();
+                        e.session_mut().name = "Без названия".into();
+                        e.mark_clean();
+                        e
+                    };
                     let player = soundcraft_playback::Player::new(Arc::new(engine.session().clone()));
-                    let app = SoundApp::new(engine, Some(player), Services::default());
-                    Ok(Box::new(WebShell { app, inbox: Rc::default(), samples: Rc::default() }))
+                    let inbox: Inbox = Rc::default();
+                    let (requests, control) = std::sync::mpsc::channel();
+                    bridge::connect(requests, inbox.clone(), cc.egui_ctx.clone());
+                    let services = Services {
+                        // The house at the right of the menu bar goes back to the site; the AI chip
+                        // opens the page's AI menu.
+                        go_home: Some(Box::new(go_home)),
+                        ai_assist: Some(Box::new(bridge::ai_menu)),
+                        ..Services::default()
+                    };
+                    let mut app = SoundApp::new(engine, Some(player), services).with_control(control);
+                    // The Brand theme (Light, Dark and System stay in Preferences and the panel's theme menu).
+                    app.ui.theme = soundcraft_ui_egui::theme::ThemeMode::Brand;
+                    Ok(Box::new(WebShell { app, inbox, samples: Rc::default() }))
                 }),
             )
             .await;
         if let Some(el) = document.get_element_by_id(LOADING_ID) {
             match result {
                 Ok(()) => el.remove(),
-                Err(e) => el.set_inner_html(&format!("<p>SoundCraft failed to start: {e:?}</p><p>A browser with WebGPU or WebGL2 is required.</p>")),
+                Err(e) => el.set_inner_html(&format!(
+                    "<p>AI-Audition не запустился: {}</p><p>Нужен браузер с WebGPU или WebGL2: свежий Chrome, Edge, Firefox или Safari. Обновите страницу.</p>",
+                    html_escape(&format!("{e:?}"))
+                )),
             }
         }
     });
@@ -94,8 +125,8 @@ impl Purpose {
 
     fn filter(self) -> (&'static str, Vec<&'static str>) {
         match self {
-            Self::Session => ("SoundCraft Session", SESSION_EXTS.to_vec()),
-            Self::Audio => ("Audio", craft_audio::DECODE_EXTENSIONS.to_vec()),
+            Self::Session => ("Проект AI-Audition", SESSION_EXTS.to_vec()),
+            Self::Audio => ("Звук", craft_audio::DECODE_EXTENSIONS.to_vec()),
             Self::Midi => ("MIDI", MIDI_EXTS.to_vec()),
         }
     }
@@ -175,14 +206,14 @@ impl WebShell {
                 let before = e.session_arc();
                 io::import_audio_bytes(e, &name, &bytes, None, None, at).map(|_| {
                     e.push_undo("Import Audio", before);
-                    format!("Imported {name}")
+                    format!("Импортирован файл {name}")
                 })
             }
             Purpose::Midi => {
                 let before = e.session_arc();
                 io::import_midi_bytes(e, &bytes, at, true).map(|_| {
                     e.push_undo("Import MIDI", before);
-                    format!("Imported {name}")
+                    format!("Импортирован файл {name}")
                 })
             }
         };
@@ -205,6 +236,8 @@ impl eframe::App for WebShell {
         self.app.logic(ctx);
         // A prompt opened during this frame becomes a picker on the next one.
         self.take_path_prompt(ctx);
+        bridge::poll_replies();
+        bridge::dirty(self.app.engine.is_dirty());
     }
 
     /// Forward raw input to the shared app hook so scripted gestures and host-key protection behave like the desktop
@@ -218,8 +251,39 @@ impl eframe::App for WebShell {
     }
 }
 
-/// Hand a saved or exported file to the person as a download named `name` (the engine's delivery
-/// hook on the web).
+/// The engine's delivery hook on the web: a saved project (the one-file bundle) goes to the page
+/// while it takes saves (the user's projects on the server); everything else, and a save the page
+/// doesn't take, downloads.
+fn deliver(name: &str, bytes: &[u8]) -> Result<(), String> {
+    let ext = name.rsplit_once('.').map(|(_, x)| x.to_ascii_lowercase());
+    if ext.as_deref() == Some(io::BUNDLE_EXTENSION) && bridge::save_to_page(name, Some(name), bytes, false)? {
+        return Ok(());
+    }
+    download(name, bytes)
+}
+
+/// Leave the editor for the site it lives on: `window.STUDIO_CONFIG.homeUrl` (studio/config.js,
+/// made absolute by the panel), one level up without it.
+fn go_home() {
+    let Some(window) = web_sys::window() else { return };
+    let url = js_sys::Reflect::get(&window, &"STUDIO_CONFIG".into())
+        .ok()
+        .filter(|c| c.is_object())
+        .and_then(|c| js_sys::Reflect::get(&c, &"homeUrl".into()).ok())
+        .and_then(|u| u.as_string())
+        .filter(|u| !u.trim().is_empty())
+        .unwrap_or_else(|| "../".to_string());
+    if let Err(e) = window.location().set_href(&url) {
+        log::error!("couldn't go to {url}: {e:?}");
+    }
+}
+
+/// `text` safe inside HTML.
+fn html_escape(text: &str) -> String {
+    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// Hand a saved or exported file to the person as a download named `name`.
 fn download(name: &str, bytes: &[u8]) -> Result<(), String> {
     let js = |e: wasm_bindgen::JsValue| format!("download failed: {e:?}");
     let window = web_sys::window().ok_or("no window")?;

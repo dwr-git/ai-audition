@@ -1,11 +1,17 @@
+AI-Audition (based on SoundCraft)
 SoundCraft
 Copyright (c) 2026 ArtCraft Team and the SoundCraft contributors.
 Licensed under the MIT License or the Apache License, Version 2.0, at your option
 (LICENSE-MIT, LICENSE-APACHE).
 
-The ArtCraft name, wordmark and logos in docs/brand/ are trademarks of the ArtCraft Team. They are
-not open source and are not covered by the license above; their terms are in
-docs/brand/LICENSE-brand.txt.
+AI-Audition is a modified version of SoundCraft by the ArtCraft team
+(https://github.com/storytold/soundcraft), under the same license. It is not an ArtCraft product and
+carries none of the ArtCraft marks.
+
+vendor/egui is the egui crate (https://github.com/emilk/egui, MIT OR Apache-2.0; copyright the egui
+authors) from the storytold/egui fork at 6d518fc799681571963842f95b55a6b68431b15a, with one addition:
+a text translator hook for the Russian interface. Its licence texts are in vendor/egui/LICENSE-MIT and
+vendor/egui/LICENSE-APACHE.
 
 Third-party material
 

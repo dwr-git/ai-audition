@@ -1,0 +1,55 @@
+# egui from storytold/egui@6d518fc799681571963842f95b55a6b68431b15a (crates/egui), vendored for
+# AI-Audition with one addition: a text translator hook (`egui::set_text_translator`, see
+# `src/widget_text.rs`) through which the browser build shows the interface in Russian.
+# Dependencies are the fork workspace's, written out; emath/epaint still come from the fork
+# through the root `[patch.crates-io]`. Licence: MIT OR Apache-2.0 (LICENSE-MIT, LICENSE-APACHE).
+[package]
+name = "egui"
+version = "0.37.0"
+authors = ["Emil Ernerfeldt <emil.ernerfeldt@gmail.com>"]
+description = "An easy-to-use immediate mode GUI that runs on both web and native"
+edition = "2024"
+rust-version = "1.95"
+homepage = "https://github.com/emilk/egui"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/emilk/egui"
+publish = false
+
+[lib]
+
+[features]
+default = []
+bytemuck = ["epaint/bytemuck"]
+callstack = ["dep:backtrace"]
+cint = ["epaint/cint"]
+color-hex = ["epaint/color-hex"]
+default_fonts = ["epaint/default_fonts"]
+experimental = []
+mint = ["epaint/mint"]
+monochrome_emoji_fonts = ["default_fonts", "epaint/monochrome_emoji_fonts"]
+persistence = ["serde", "epaint/serde", "ron"]
+rayon = ["epaint/rayon"]
+serde = ["dep:serde", "epaint/serde", "accesskit/serde"]
+unity = ["epaint/unity"]
+web_file = ["dep:web-sys"]
+_override_unity = ["epaint/_override_unity"]
+
+[dependencies]
+emath = { version = "0.37.0", default-features = false }
+epaint = { version = "0.37.0", default-features = false }
+accesskit = "0.25.0"
+ahash = { version = "0.8.12", default-features = false, features = ["no-rng", "std"] }
+bitflags = "2.13"
+itertools = "0.15.0"
+log = { version = "0.4.34", features = ["std"] }
+nohash-hasher = "0.2.0"
+profiling = { version = "1.0", default-features = false }
+smallvec = "1.16"
+unicode-segmentation = "1.13"
+backtrace = { version = "0.3.76", optional = true }
+document-features = { version = "0.2.12", optional = true }
+ron = { version = "0.12.2", optional = true }
+serde = { version = "1.0", optional = true, features = ["derive", "rc"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3.103", optional = true, features = ["File"] }

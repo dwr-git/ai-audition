@@ -272,15 +272,15 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
         ui,
         |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
-                ui.menu_button("SoundCraft", |ui| {
+                ui.menu_button(crate::PRODUCT_NAME, |ui| {
                     ui.add_enabled_ui(menu_entries_enabled, |ui| {
-                        if ui.button("About SoundCraft").clicked() {
+                        if ui.button(format!("About {}", crate::PRODUCT_NAME)).clicked() {
                             app.ui.show_about = true;
                         }
                         if ui.add_enabled(preferences_enabled, egui::Button::new("Preferences...")).clicked() {
                             let _ = app.run("setup.preferences", json!({"value": true}));
                         }
-                        if ui.button("Check for Updates…").clicked() {
+                        if app.services.go_home.is_none() && ui.button("Check for Updates…").clicked() {
                             let _ = app.run("app.checkForUpdates", json!({}));
                         }
                         if ui.button("Session Info").clicked() {
@@ -289,9 +289,11 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
                         if ui.button("Session Audio Health").clicked() {
                             let _ = app.run("window.audio_health", json!({"value": true}));
                         }
-                        ui.separator();
-                        if ui.button("Quit").clicked() {
-                            let _ = crate::dialogs::run_or_ask(app, "app.quit", json!({}));
+                        if app.services.go_home.is_none() {
+                            ui.separator();
+                            if ui.button("Quit").clicked() {
+                                let _ = crate::dialogs::run_or_ask(app, "app.quit", json!({}));
+                            }
                         }
                     });
                 });
@@ -336,11 +338,73 @@ pub fn menu_bar(app: &mut SoundApp, ui: &mut egui::Ui) {
                     if app.ui.window == MainWindow::Edit || app.ui.mix_separate { "Edit" } else { "Mix" }
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Web (AI-Audition): the house back to the site at the right end, the AI chip by it.
+                    web_buttons(app, ui);
                     ui.label(egui::RichText::new(title).color(t.text_dim));
                 });
             });
         },
     );
+}
+
+/// Web (AI-Audition): at the right end of the menu bar, a house (back to the site,
+/// [`crate::Services::go_home`]) and the AI chip (the page's AI menu for names, comments and
+/// markers, [`crate::Services::ai_assist`]). Nothing when the host gives neither. Drawn in code.
+fn web_buttons(app: &mut SoundApp, ui: &mut egui::Ui) {
+    let t = crate::theme::Tokens::current();
+    if app.services.go_home.is_some() {
+        let (r, resp) = ui.allocate_exact_size(egui::vec2(26.0, 20.0), egui::Sense::click());
+        let resp = resp.on_hover_text("На главную").on_hover_cursor(egui::CursorIcon::PointingHand);
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "На главную"));
+        if resp.hovered() {
+            ui.painter().rect_filled(r, 5.0, t.button_hi);
+        }
+        let c = r.center();
+        let color = if resp.hovered() { t.accent } else { t.text };
+        let stroke = egui::Stroke::new(1.6, color);
+        // A roof, the walls and a door, in points.
+        let p = |x: f32, y: f32| egui::pos2(c.x + x, c.y + y);
+        ui.painter().line(vec![p(-7.0, -0.5), p(0.0, -7.0), p(7.0, -0.5)], stroke);
+        ui.painter().line(vec![p(-5.0, -2.0), p(-5.0, 6.5), p(5.0, 6.5), p(5.0, -2.0)], stroke);
+        ui.painter().rect_filled(egui::Rect::from_min_max(p(-1.6, 2.0), p(1.6, 6.5)), 0.5, color);
+        if resp.clicked()
+            && let Some(home) = app.services.go_home.as_ref()
+        {
+            home();
+        }
+        ui.add_space(4.0);
+    }
+    if app.services.ai_assist.is_some() {
+        let label = "ИИ";
+        let galley = ui.painter().layout_no_wrap(label.to_string(), crate::theme::bold(11.5), t.accent_text_on());
+        let (r, resp) = ui.allocate_exact_size(egui::vec2(galley.size().x + 30.0, 20.0), egui::Sense::click());
+        let tip = "ИИ для названий дорожек и клипов, маркеров и комментариев";
+        let resp = resp.on_hover_text(tip).on_hover_cursor(egui::CursorIcon::PointingHand);
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tip));
+        let fill = if resp.hovered() { t.accent_dark } else { t.accent };
+        ui.painter().rect_filled(r, 10.0, fill);
+        // A four-pointed sparkle drawn in code.
+        let c = egui::pos2(r.min.x + 12.0, r.center().y);
+        let (o, i) = (5.5, 1.5);
+        let star = vec![
+            egui::pos2(c.x, c.y - o),
+            egui::pos2(c.x + i, c.y - i),
+            egui::pos2(c.x + o, c.y),
+            egui::pos2(c.x + i, c.y + i),
+            egui::pos2(c.x, c.y + o),
+            egui::pos2(c.x - i, c.y + i),
+            egui::pos2(c.x - o, c.y),
+            egui::pos2(c.x - i, c.y - i),
+        ];
+        ui.painter().add(egui::Shape::convex_polygon(star, t.accent_text_on(), egui::Stroke::NONE));
+        ui.painter().galley(egui::pos2(r.min.x + 21.0, r.center().y - galley.size().y / 2.0), galley, t.accent_text_on());
+        if resp.clicked()
+            && let Some(ai) = app.services.ai_assist.as_ref()
+        {
+            ai(r.min.x, r.max.y + 6.0);
+        }
+        ui.add_space(6.0);
+    }
 }
 
 /// A menu taller than the window scrolls instead of running off its bottom edge (#1482).

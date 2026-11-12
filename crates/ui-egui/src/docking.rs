@@ -486,7 +486,7 @@ pub fn show(app: &mut crate::SoundApp, ui: &mut egui::Ui, window: crate::MainWin
         panel_limits,
         |ui, panel| match panel {
             Panel::Canvas => {
-                ui.painter().rect_filled(ui.max_rect(), 0.0, t.window_bg);
+                crate::theme::paint_canvas_fill(ui.painter(), ui.max_rect(), t.window_bg);
                 if edit {
                     crate::edit_window::main_area(app, ui);
                 } else {
